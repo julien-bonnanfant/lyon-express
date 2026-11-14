@@ -35,6 +35,8 @@
   #credit{position:fixed;left:12px;bottom:6px;font-size:10px;color:#ffffff88}
   /* empilement par ordre du DOM : #g3 (3D) puis #c (2D / surcouche) puis les panneaux */
   #g3{position:fixed;left:0;top:0;display:none}
+  #cz{position:fixed;inset:0;display:none}
+  #cz .cesium-viewer-bottom{display:none!important} /* crédits repris dans #credit */
   #c{position:relative}
   #bsound{right:12px;top:312px;z-index:6;border:0;color:#ddd;font:700 14px "Segoe UI",system-ui,sans-serif;cursor:pointer;padding:7px 12px;touch-action:none}
   #bHorn{right:calc(30px + env(safe-area-inset-right));bottom:calc(196px + env(safe-area-inset-bottom));width:58px;height:58px;font-size:11px}
@@ -77,6 +79,7 @@
 </head>
 <body>
 <canvas id="g3"></canvas>
+<div id="cz"></div>
 <canvas id="c"></canvas>
 <div id="hud" class="panel">
   <div id="money">0 €</div>
@@ -86,7 +89,7 @@
 </div>
 <div id="street" class="panel">Lyon</div>
 <div id="speed" class="panel">0 <small>km/h</small></div>
-<button id="b3d" class="panel" title="Changer de vue (touche C)">Vue 3D</button>
+<button id="b3d" class="panel" title="Changer de vue : 2D / 3D / Réel (touche C)">Vue : 2D</button>
 <button id="bnight" class="panel" title="Jour / nuit (touche N)">Nuit</button>
 <button id="bsound" class="panel" title="Son (touche M)">Son : oui</button>
 <div id="help" class="panel">
@@ -94,12 +97,12 @@
   <kbd>E</kbd> : monter / descendre<br>
   <kbd>Espace</kbd> : frein à main<br>
   <kbd>Maj</kbd> : courir<br>
-  <kbd>C</kbd> : vue 2D / 3D<br>
+  <kbd>C</kbd> : vue 2D / 3D / Réel<br>
   <kbd>N</kbd> : jour / nuit<br>
   <kbd>H</kbd> : klaxon · <kbd>M</kbd> : son
 </div>
 <div id="toast"></div>
-<div id="credit">Données cartographiques © contributeurs OpenStreetMap (ODbL) · Hauteurs des bâtiments et arbres : Métropole de Lyon (Licence Ouverte)</div>
+<div id="credit">Données cartographiques © contributeurs OpenStreetMap (ODbL) · Hauteurs des bâtiments, arbres, photomaillage 3D 2023 : Métropole de Lyon (Licence Ouverte)</div>
 <div id="touch">
   <div id="joy"><div id="knob"></div></div>
   <div id="joyhint">← pouce gauche : diriger</div>
@@ -118,7 +121,7 @@
     <kbd>E</kbd><span>monter dans une voiture / en descendre</span>
     <kbd>Espace</kbd><span>frein à main (dérapages)</span>
     <kbd>Maj</kbd><span>courir à pied</span>
-    <kbd>C</kbd><span>vue 2D / vue 3D à la 3e personne</span>
+    <kbd>C</kbd><span>vue 2D / 3D / Réel (vraies photos 3D de Lyon)</span>
     <kbd>H</kbd><span>klaxon (<kbd>M</kbd> : couper le son)</span>
     <kbd>N</kbd><span>mode nuit (phares, lampadaires)</span>
   </div>
@@ -896,6 +899,8 @@ const MS=MM/Math.max(MX1-MX0,MY1-MY0); mm.width=MM*2; mm.height=MM*2;
 
 function curTarget(){ return mission.stage==='pickup' ? mission.from : mission.stage==='drop' ? mission.to : null; }
 function render(){
+  if(REEL && CZ){ try{ renderReel(); }catch(e){ console.error(e); CZFAIL=true; toast('Vue Réel en erreur : vue 3D','#ff6b5b'); setView('3d'); }
+    ctx.setTransform(DPR,0,0,DPR,0,0); ctx.clearRect(0,0,W,H); drawMinimap(curTarget()); return; }
   if(MODE3D && GL){ render3D(); ctx.setTransform(DPR,0,0,DPR,0,0); ctx.clearRect(0,0,W,H); drawMinimap(curTarget()); return; }
   const sp = player.car ? Math.hypot(player.car.vx,player.car.vy) : 0;
   const targetS = (player.car ? clamp(4.6-sp*0.085,2.3,4.6) : 6.5) * VSC;
@@ -1323,20 +1328,187 @@ function render3D(){
 }
 
 let BUILDING3D=false;
-function toggle3D(){
-  if(BUILDING3D) return; // un 2e appui pendant la construction annulerait le 1er
-  if(!MODE3D && !G3){
-    BUILDING3D=true; toast('Construction de la ville en 3D…','#ffcc33');
-    setTimeout(()=>{ let ok=false; try{ ok=init3D(); }catch(e){ console.error(e); }
-      BUILDING3D=false;
-      if(!ok){ toast('3D indisponible sur cet appareil','#ff6b5b'); return; }
-      toggle3D(); },40);
-    return;
-  }
-  MODE3D=!MODE3D; cam3.init=false;
-  $('g3').style.display=MODE3D?'block':'none'; $('b3d').textContent=MODE3D?'Vue 2D':'Vue 3D';
-  try{ localStorage.setItem('lx_vue',MODE3D?'3d':'2d'); }catch(_){}
+// ============================================================ vue « Réel » (CesiumJS + photomaillage 3D 2023 du Grand Lyon)
+// Le jeu (physique, IA, police, missions, collisions OSM) ne change pas : seul le rendu passe par Cesium.
+// - Cesium (≈ 5 Mo) n'est chargé qu'au premier passage en vue Réel, depuis jsDelivr ;
+// - tuiles du photomaillage en streaming depuis download.data.grandlyon.com (CORS autorisé ; PAS data.grandlyon.com) ;
+// - voitures / piétons / flèche = petits modèles glTF générés ici, en « pool » réutilisé chaque image ;
+// - feux, gyrophares, phares = points lumineux ; balise et zone de mission = entités cylindres ;
+// - hauteur du sol réel : grille de 8 m remplie à la demande par rayons verticaux (pickFromRay) lancés
+//   depuis 3 m au-dessus du sol connu (sous les arbres) ; repli : hauteur du joueur.
+// - Cesium ne sélectionne que les tuiles vues par la caméra : les rayons ne marchent que là où l'on regarde.
+let REEL=false, CZ=null, CZLOAD=false, CZFAIL=false, VIEW='2d', VIEW_WANT='2d';
+const CESIUM_URL='https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/';
+const MESH_URL='https://download.data.grandlyon.com/files/grandlyon/2023/mesh/tileset.json';
+const HCELL=8, HGRID=new Map(), HREQ=new Set(); let HDEF=217, HPLAYER=217; // hauteurs ellipsoïdales (m)
+const hkey=(i,j)=>(i+5000)*100000+(j+5000); // clé positive (i, j de -5000 à 95000)
+const llOf=(x,y)=>[LON0+x/KX, LAT0-y/KY];
+function czPos(x,y,h){ const l=llOf(x,y); return Cesium.Cartesian3.fromDegrees(l[0],l[1],h); }
+// hauteur du sol réel (bilinéaire sur la grille ; cellule inconnue -> demandée, repli sur la hauteur du joueur)
+function groundH(x,y,ask){
+  const fx=x/HCELL, fy=y/HCELL, i=Math.floor(fx), j=Math.floor(fy), tx=fx-i, ty=fy-j; let s=0, w=0;
+  for(const [di,dj,ww] of [[0,0,(1-tx)*(1-ty)],[1,0,tx*(1-ty)],[0,1,(1-tx)*ty],[1,1,tx*ty]]){ const v=HGRID.get(hkey(i+di,j+dj));
+    if(v!==undefined){ s+=v*ww; w+=ww; } else if(ask) HREQ.add(hkey(i+di,j+dj)); }
+  return w>0.01 ? s/w : HPLAYER;
 }
+function czRayDown(x,y,hFrom){ const o=czPos(x,y,hFrom), d=Cesium.Cartesian3.negate(Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(o,new Cesium.Cartesian3()),new Cesium.Cartesian3());
+  const h=CZ.scene.pickFromRay(new Cesium.Ray(o,d),CZ.excl); if(!h||!h.position) return null;
+  const c=Cesium.Cartographic.fromCartesian(h.position); return c ? c.height : null; }
+
+// glTF 2.0 minimal à partir d'une liste de triangles (x,y,z,r,g,b par sommet ; repère glTF : x avant, y haut)
+function gltfTris(T){
+  const n=T.length/6, P=new Float32Array(n*3), N=new Float32Array(n*3), C=new Float32Array(n*4), mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+  for(let v=0;v<n;v++){ for(let k=0;k<3;k++){ const q=T[v*6+k]; P[v*3+k]=q; mn[k]=Math.min(mn[k],q); mx[k]=Math.max(mx[k],q); } C.set([T[v*6+3],T[v*6+4],T[v*6+5],1],v*4); }
+  for(let v=0;v<n;v+=3){ const a=[P[v*3],P[v*3+1],P[v*3+2]], b=[P[v*3+3],P[v*3+4],P[v*3+5]], c=[P[v*3+6],P[v*3+7],P[v*3+8]];
+    const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], w=[c[0]-a[0],c[1]-a[1],c[2]-a[2]]; let nx=u[1]*w[2]-u[2]*w[1], ny=u[2]*w[0]-u[0]*w[2], nz=u[0]*w[1]-u[1]*w[0]; const l=Math.hypot(nx,ny,nz)||1;
+    for(let k=0;k<3;k++) N.set([nx/l,ny/l,nz/l],(v+k)*3); }
+  const bytes=new Uint8Array(P.byteLength+N.byteLength+C.byteLength); bytes.set(new Uint8Array(P.buffer),0); bytes.set(new Uint8Array(N.buffer),P.byteLength); bytes.set(new Uint8Array(C.buffer),P.byteLength+N.byteLength);
+  let bin=''; for(let i=0;i<bytes.length;i+=8192) bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));
+  const g={asset:{version:'2.0'},scene:0,scenes:[{nodes:[0]}],nodes:[{mesh:0}],
+    meshes:[{primitives:[{attributes:{POSITION:0,NORMAL:1,COLOR_0:2},material:0}]}],
+    materials:[{pbrMetallicRoughness:{baseColorFactor:[1,1,1,1],metallicFactor:0,roughnessFactor:0.85},doubleSided:true}],
+    buffers:[{byteLength:bytes.length,uri:'data:application/octet-stream;base64,'+btoa(bin)}],
+    bufferViews:[{buffer:0,byteOffset:0,byteLength:P.byteLength},{buffer:0,byteOffset:P.byteLength,byteLength:N.byteLength},{buffer:0,byteOffset:P.byteLength+N.byteLength,byteLength:C.byteLength}],
+    accessors:[{bufferView:0,componentType:5126,count:n,type:'VEC3',min:mn,max:mx},{bufferView:1,componentType:5126,count:n,type:'VEC3'},{bufferView:2,componentType:5126,count:n,type:'VEC4'}]};
+  return 'data:model/gltf+json;base64,'+btoa(unescape(encodeURIComponent(JSON.stringify(g))));
+}
+function gBox(T,x0,x1,y0,y1,z0,z1,c){ // pavé aligné (glTF : x avant, y haut, z côté)
+  const V=[[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]];
+  for(const f of [[0,1,2,3],[5,4,7,6],[4,0,3,7],[1,5,6,2],[3,2,6,7],[4,5,1,0]]){ const q=f.map(i=>V[i]);
+    for(const t of [[0,1,2],[0,2,3]]) for(const i of t) T.push(q[i][0],q[i][1],q[i][2],c[0],c[1],c[2]); } }
+function carModelUrl(){ const T=[], W=[1,1,1], G=[0.15,0.19,0.24], K=[0.08,0.08,0.08];
+  gBox(T,-2.2,2.2,0.28,0.98,-0.95,0.95,W); gBox(T,-1.48,0.68,0.98,1.44,-0.82,0.82,G); gBox(T,-1.35,0.55,1.44,1.5,-0.76,0.76,W);
+  for(const sx of [-1.35,1.35]) for(const sz of [-0.82,0.82]) gBox(T,sx-0.34,sx+0.34,0,0.62,sz-0.14,sz+0.14,K);
+  for(const sz of [-0.6,0.6]){ gBox(T,2.17,2.22,0.62,0.8,sz-0.2,sz+0.2,[1,0.97,0.8]); gBox(T,-2.22,-2.17,0.62,0.8,sz-0.2,sz+0.2,[0.75,0.12,0.1]); }
+  return gltfTris(T); }
+function pedModelUrl(){ const T=[]; gBox(T,-0.12,0.12,0,0.78,-0.17,0.17,[0.17,0.18,0.22]); gBox(T,-0.15,0.15,0.78,1.42,-0.23,0.23,[1,1,1]); gBox(T,-0.11,0.15,1.45,1.72,-0.13,0.13,[0.85,0.68,0.55]); return gltfTris(T); }
+function arrowModelUrl(){ const T=[], c=[1,1,1], th=0.14, P=(x,z)=>[x,z]; // chevron épais, pointe vers +x
+  const tip=P(1.5,0), l=P(-0.8,-1), n=P(-0.25,0), r=P(-0.8,1);
+  for(const y of [0,th]) for(const t of [[tip,l,n],[tip,n,r]]) for(const v of t) T.push(v[0],y,v[1],...c);
+  for(const [a,b] of [[tip,l],[l,n],[n,r],[r,tip]]){ for(const v of [[a,0],[b,0],[b,th],[a,0],[b,th],[a,th]]) T.push(v[0][0],v[1],v[0][1],...c); }
+  return gltfTris(T); }
+
+function loadCesium(){ return new Promise((res,rej)=>{ if(window.Cesium) return res();
+  window.CESIUM_BASE_URL=CESIUM_URL; const l=document.createElement('link'); l.rel='stylesheet'; l.href=CESIUM_URL+'Widgets/widgets.css'; document.head.appendChild(l);
+  const s=document.createElement('script'); s.src=CESIUM_URL+'Cesium.js'; s.onload=()=>res(); s.onerror=()=>rej(new Error('CesiumJS injoignable')); document.head.appendChild(s);
+  setTimeout(()=>rej(new Error('délai dépassé (CesiumJS)')),40000); }); }
+async function initReel(){
+  await loadCesium();
+  const viewer=new Cesium.Viewer('cz',{baseLayer:false,animation:false,timeline:false,baseLayerPicker:false,geocoder:false,homeButton:false,sceneModePicker:false,
+    navigationHelpButton:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,useDefaultRenderLoop:false,msaaSamples:TOUCH?1:4});
+  const scene=viewer.scene;
+  scene.globe.show=false; scene.backgroundColor=Cesium.Color.fromCssColorString('#b9cfe2'); scene.skyAtmosphere.show=true;
+  scene.screenSpaceCameraController.enableInputs=false; scene.fog.enabled=true; scene.fog.density=0.0006;
+  if(TOUCH) viewer.resolutionScale=Math.min(1,1.8/(devicePixelRatio||1));
+  const ts=await Cesium.Cesium3DTileset.fromUrl(MESH_URL,{maximumScreenSpaceError:TOUCH?12:6,cacheBytes:(TOUCH?256:768)*1024*1024,skipLevelOfDetail:true,dynamicScreenSpaceError:true});
+  scene.primitives.add(ts);
+  const mk=async(url,n)=>{ const out=[]; for(let i=0;i<n;i++){ const m=await Cesium.Model.fromGltfAsync({url,colorBlendMode:Cesium.ColorBlendMode.HIGHLIGHT,show:false,forwardAxis:Cesium.Axis.X,upAxis:Cesium.Axis.Y}); scene.primitives.add(m); out.push(m); } return out; };
+  const carU=carModelUrl(), pedU=pedModelUrl();
+  const carsM=await mk(carU,TOUCH?30:45), pedsM=await mk(pedU,TOUCH?30:50), arrow=(await mk(arrowModelUrl(),1))[0];
+  const pts=scene.primitives.add(new Cesium.PointPrimitiveCollection());
+  const P=[]; for(let i=0;i<220;i++) P.push(pts.add({show:false,pixelSize:8,color:Cesium.Color.WHITE}));
+  // nuit : assombrissement global qui épargne les pixels très lumineux (phares, feux)
+  const night=scene.postProcessStages.add(new Cesium.PostProcessStage({fragmentShader:`uniform sampler2D colorTexture; in vec2 v_textureCoordinates;
+    void main(){ vec4 c=texture(colorTexture,v_textureCoordinates); float l=dot(c.rgb,vec3(0.299,0.587,0.114));
+      out_FragColor=vec4(mix(c.rgb*vec3(0.36,0.4,0.6), c.rgb, smoothstep(0.8,0.95,l)),1.0); }`}));
+  night.enabled=false;
+  CZ={viewer,scene,ts,carsM,pedsM,arrow,P,night,excl:[...carsM,...pedsM,arrow],colors:new Map(),beacon:null,beaconFor:null,zone:null};
+  // hauteur sous le joueur dès que les premières tuiles sont là
+  ts.initialTilesLoaded.addEventListener(()=>{ CZ.ready=true; });
+}
+const czCol=h=>{ let c=CZ.colors.get(h); if(!c){ c=Cesium.Color.fromCssColorString(h); CZ.colors.set(h,c); } return c; };
+// modèles chargés avec forwardAxis X : cap Cesium 0 = est, sens horaire = même convention que le cap du jeu
+function czPlace(m,x,y,h,a,roll){ m.modelMatrix=Cesium.Transforms.headingPitchRollToFixedFrame(czPos(x,y,h),new Cesium.HeadingPitchRoll(a+CZ_HOFF,0,roll||0)); m.show=true; }
+let CZ_HOFF=0; // décalage de cap (réglage)
+
+function renderReel(){
+  const sc=CZ.scene, pc=player.car, px=player.x, py=player.y, sp=pc?Math.hypot(pc.vx,pc.vy):0;
+  // --- hauteur du sol : sous le joueur (souvent) + cellules demandées (4 rayons par image au plus)
+  // chaque rayon = une passe de rendu de « picking » : au plus UN rayon par image (sinon ~80 ms/image)
+  CZ.hT=(CZ.hT||0)+1; const rayOk=CZ.hT%2===0, doPlayer=CZ.hT%8===0; // un rayon une image sur deux
+  if(doPlayer){ const h=czRayDown(px,py,HPLAYER+3); if(h!==null && Math.abs(h-HPLAYER)<6) HPLAYER+= (h-HPLAYER)*0.5;
+    HGRID.set(hkey(Math.round(px/HCELL),Math.round(py/HCELL)),HPLAYER); }
+  let k=(doPlayer||!rayOk)?1:0; for(const key of HREQ){ if(k>=1) break; HREQ.delete(key); if(HGRID.has(key)) continue; const i=Math.floor(key/100000)-5000, j=key%100000-5000;
+    const x=i*HCELL, y=j*HCELL; if(Math.hypot(x-px,y-py)>260) continue; const h=czRayDown(x,y,groundH(x,y,false)+3); if(h!==null && Math.abs(h-HPLAYER)<25) HGRID.set(key,h); k++; }
+  // --- caméra (même logique que la vue 3D : derrière le joueur, rapprochée par les bâtiments OSM)
+  const yawT=pc?pc.a:player.a; if(!cam3.init){ cam3.yaw=yawT; cam3.d=pc?8:4; cam3.init=true; }
+  cam3.yaw+=wrapA(yawT-cam3.yaw)*(pc?0.09:0.035);
+  const portrait=H>W, dist=(pc?7.2+sp*0.09:4.0)*(portrait?1.35:1), hgt=(pc?3.0+sp*0.035:2.0)*(portrait?1.2:1), fx=Math.cos(cam3.yaw), fy=Math.sin(cam3.yaw);
+  let d=dist; for(let s=0.8;s<=dist;s+=0.5){ if(hitsBuilding(px-fx*s,py-fy*s)){ d=Math.max(0.8,s-0.7); break; } }
+  cam3.d+=(d-cam3.d)*(d<cam3.d?0.5:0.06);
+  const sh=shake*0.5, g0=HPLAYER;
+  const eye=czPos(px-fx*cam3.d+(Math.random()-.5)*sh, py-fy*cam3.d, g0+hgt+(dist-cam3.d)*0.45+(Math.random()-.5)*sh), ctr=czPos(px+fx*4, py+fy*4, g0+(pc?1.1:1.3));
+  const dir=Cesium.Cartesian3.normalize(Cesium.Cartesian3.subtract(ctr,eye,new Cesium.Cartesian3()),new Cesium.Cartesian3());
+  const up=Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(eye,new Cesium.Cartesian3());
+  CZ.viewer.camera.setView({destination:eye,orientation:{direction:dir,up}});
+  if(window.__camR){ const R=window.__camR, e2=czPos(R.eye[0],R.eye[1],R.eye[2]), c2=czPos(R.ctr[0],R.ctr[1],R.ctr[2]); // débogage : caméra imposée (x, y jeu, hauteur ellipsoïdale)
+    CZ.viewer.camera.setView({destination:e2,orientation:{direction:Cesium.Cartesian3.normalize(Cesium.Cartesian3.subtract(c2,e2,new Cesium.Cartesian3()),new Cesium.Cartesian3()),up:Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(e2,new Cesium.Cartesian3())}}); }
+  CZ.viewer.camera.frustum.fov=Cesium.Math.toRadians((pc?62:58)*(portrait?1.25:1)+Math.min(8,sp*0.25));
+  // --- voitures (les plus proches d'abord)
+  const near=cars.map(c=>[c,(c.x-px)**2+(c.y-py)**2]).filter(e=>e[1]<200*200).sort((a,b)=>a[1]-b[1]);
+  CZ.carsM.forEach((m,i)=>{ const e=near[i]; if(!e){ m.show=false; return; } const c=e[0];
+    czPlace(m,c.x,c.y,groundH(c.x,c.y,true),c.a); m.color=czCol(c.police?'#f4f6f7':c.col); });
+  // --- piétons + joueur à pied
+  const pl=peds.map(p=>[p,(p.x-px)**2+(p.y-py)**2]).filter(e=>e[1]<120*120).sort((a,b)=>a[1]-b[1]);
+  if(!pc) pl.unshift([{x:px,y:py,a:player.a,state:'walk',col:'#ffcc33'},0]);
+  CZ.pedsM.forEach((m,i)=>{ const e=pl[i]; if(!e){ m.show=false; return; } const p=e[0], dn=p.state==='down';
+    czPlace(m,p.x,p.y,groundH(p.x,p.y,true)+(dn?0.25:0),p.a,dn?Math.PI/2:0); m.color=czCol(p.col); });
+  // --- points lumineux : feux tricolores, gyrophares, phares/feux arrière la nuit
+  let pi=0; const PT=(x,y,h,col,size)=>{ if(pi>=CZ.P.length) return; const q=CZ.P[pi++]; q.position=czPos(x,y,h); q.color=czCol(col); q.pixelSize=size; q.show=true; };
+  for(const G of SIGS){ if(Math.abs(G.cx-px)>130||Math.abs(G.cy-py)>130) continue;
+    for(const a of G.app){ const sd=stopDist(a.v); if(a.l<sd+1) continue; const o=a.ew/2+0.9, x=NX[a.v]-a.fx*sd-a.fy*o, y=NY[a.v]-a.fy*sd+a.fx*o;
+      PT(x,y,groundH(x,y,true)+3.4,['#3ddc6a','#ffc21a','#ff3b30'][sigState(G,a.g)],9); } }
+  const on=(blink*6|0)%2;
+  for(const [c] of near.slice(0,CZ.carsM.length)){ const g=groundH(c.x,c.y,false), f=[Math.cos(c.a),Math.sin(c.a)], r=[-f[1],f[0]];
+    if(c.police){ PT(c.x-r[0]*0.35,c.y-r[1]*0.35,g+1.6,on?'#2e7dff':'#ff2a2a',8); PT(c.x+r[0]*0.35,c.y+r[1]*0.35,g+1.6,on?'#ff2a2a':'#2e7dff',8); }
+    if(NIGHT){ for(const s of [-1,1]){ PT(c.x+f[0]*2.2+r[0]*0.6*s,c.y+f[1]*2.2+r[1]*0.6*s,g+0.72,'#fffbe8',7); PT(c.x-f[0]*2.2+r[0]*0.6*s,c.y-f[1]*2.2+r[1]*0.6*s,g+0.72,'#ffd0c8',5); } } }
+  for(;pi<CZ.P.length;pi++) CZ.P[pi].show=false;
+  // --- objectif : balise + zone au sol (entités recréées quand l'objectif change), colis = point, flèche
+  const T=curTarget(), col=mission.stage==='pickup'?'#ffcc33':'#7ee08a';
+  // balise + zone : primitives créées une fois (synchrones), recréées si l'objectif ou la hauteur du sol change.
+  // (des entités repositionnées à chaque image obligeaient Cesium à reconstruire leur géométrie : jamais affichées)
+  const hT=T?groundH(T.x,T.y,true):0;
+  if(T!==CZ.beaconFor || (T && Math.abs(hT-CZ.beaconH)>0.5)){
+    for(const q of [CZ.beacon,CZ.zone]) if(q){ CZ.excl.splice(CZ.excl.indexOf(q),1); sc.primitives.remove(q); }
+    CZ.beacon=CZ.zone=null; CZ.beaconFor=T; CZ.beaconH=hT;
+    if(T){ const cyl=(h,len,r,a)=>sc.primitives.add(new Cesium.Primitive({asynchronous:false,
+        geometryInstances:new Cesium.GeometryInstance({geometry:new Cesium.CylinderGeometry({length:len,topRadius:r,bottomRadius:r,slices:40}),
+          modelMatrix:Cesium.Transforms.eastNorthUpToFixedFrame(czPos(T.x,T.y,h+len/2)),
+          attributes:{color:Cesium.ColorGeometryInstanceAttribute.fromColor(czCol(col).withAlpha(a))}}),
+        appearance:new Cesium.PerInstanceColorAppearance({translucent:true,closed:true,flat:true})}));
+      CZ.beacon=cyl(hT,140,3.5,0.42); CZ.zone=cyl(hT+0.05,0.7,ZONE_R,0.3); CZ.excl.push(CZ.beacon,CZ.zone); } }
+  const dT=T?Math.hypot(T.x-px,T.y-py):0;
+  if(T && dT>ZONE_R*0.8){ const gd=dT<60?null:routeGuide(), gx=gd?gd.x:T.x, gy=gd?gd.y:T.y, an=Math.atan2(gy-py,gx-px);
+    const m=CZ.arrow, s=pc?0.72:0.32;
+    m.modelMatrix=Cesium.Matrix4.multiplyByUniformScale(Cesium.Transforms.headingPitchRollToFixedFrame(czPos(px,py,g0+(pc?2.6:2.15)+Math.sin(blink*3)*0.08),new Cesium.HeadingPitchRoll(an+CZ_HOFF,0.87,0)),s,new Cesium.Matrix4());
+    m.color=czCol(col); m.show=true; }
+  else CZ.arrow.show=false;
+  CZ.night.enabled=!!NIGHT; sc.backgroundColor=Cesium.Color.fromCssColorString(NIGHT?'#0b1222':'#b9cfe2');
+  CZ.viewer.resize(); CZ.viewer.render();
+}
+
+// ---- choix de la vue : 2D -> 3D -> Réel -> 2D (bouton / touche C), mémorisé dans 'lx_vue'
+const VIEW_NAME={'2d':'2D','3d':'3D','reel':'Réel'};
+function setView(v){
+  if(v!=='2d' && !G3){ // la 3D stylisée sert aussi de vue d'attente pendant le chargement du Réel
+    if(BUILDING3D) return; BUILDING3D=true; toast('Construction de la ville en 3D…','#ffcc33');
+    setTimeout(()=>{ let ok=false; try{ ok=init3D(); }catch(e){ console.error(e); } BUILDING3D=false;
+      if(!ok){ toast('3D indisponible sur cet appareil','#ff6b5b'); return; } setView(v); },40); return; }
+  VIEW_WANT=v;
+  if(v==='reel' && !CZ){
+    if(CZFAIL){ v='3d'; VIEW_WANT='3d'; }
+    else { if(!CZLOAD){ CZLOAD=true; toast('Chargement du Lyon réel…','#ffcc33');
+        initReel().then(()=>{ CZLOAD=false; if(VIEW_WANT==='reel') setView('reel'); })
+          .catch(e=>{ CZLOAD=false; CZFAIL=true; console.warn(e); toast('Lyon réel indisponible ici : vue 3D','#ff6b5b'); if(VIEW_WANT==='reel') setView('3d'); }); }
+      v='3d'; } // en attendant : 3D stylisée
+  }
+  VIEW=v; MODE3D=v!=='2d'; REEL=v==='reel'; cam3.init=false;
+  $('g3').style.display=MODE3D&&!REEL?'block':'none'; $('cz').style.display=REEL?'block':'none';
+  $('b3d').textContent='Vue : '+VIEW_NAME[VIEW_WANT]+(VIEW_WANT!==VIEW?'…':'');
+  try{ localStorage.setItem('lx_vue',VIEW_WANT); }catch(_){}
+}
+function toggle3D(){ const order=CZFAIL?['2d','3d']:['2d','3d','reel']; setView(order[(order.indexOf(VIEW_WANT)+1)%order.length]); }
+
 
 function frame(now){
   const dt=Math.min(0.05,(now-last)/1000); last=now; blink+=dt;
@@ -1351,12 +1523,12 @@ for(let i=0;i<80;i++) spawnPed(10,320);
 $('play').onclick=()=>{ $('start').style.display='none'; started=true; initAudio();
   // vue 3D par défaut ; la 2D seulement si le joueur l'a choisie (clé 'lx_vue' ; l'ancienne clé 'lx3d' est ignorée)
   let vue=null; try{ vue=localStorage.getItem('lx_vue'); if(localStorage.getItem('lx_nuit')==='1' && !NIGHT) toggleNight(); }catch(_){}
-  if(vue!=='2d' && !MODE3D) toggle3D();
+  setView(vue==='2d'||vue==='3d'||vue==='reel' ? vue : 'reel');
   if(TOUCH){ try{ const r=document.documentElement.requestFullscreen; if(r) r.call(document.documentElement).catch(()=>{}); }catch(_){} } toast('Bienvenue à Lyon !','#ffcc33');
   setTimeout(()=>{ $('help').style.display='none'; },25000); // l'aide pouvait masquer la flèche de guidage
 };
 requestAnimationFrame(frame);
-window.__game={player,cars,peds,mission,POI,SIGS,update,render,inp,TJ,TB,toggle3D};
+window.__game={player,cars,peds,mission,POI,SIGS,update,render,inp,TJ,TB,toggle3D,setView};
 </script>
 </body>
 </html>
