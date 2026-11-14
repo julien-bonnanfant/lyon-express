@@ -177,7 +177,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261115-000519'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261115-001339'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -265,13 +265,19 @@ const LAMPS=[], LG=new Map();
   for(const r of MAP.r){ if(r.t==='pedestrian'||r.t==='service'||r.p.length<4) continue; const p=r.p; let acc=12;
     for(let i=0;i+3<p.length;i+=2){ const ex=p[i+2]-p[i], ey=p[i+3]-p[i+1], l=Math.hypot(ex,ey); if(l<0.1) continue; const fx=ex/l, fy=ey/l;
       while(acc<l){ side=-side; const o=(r.w||8)/2+1.1, x=p[i]+fx*acc-fy*o*side, y=p[i+1]+fy*acc+fx*o*side;
-        if(!LAMPS.length || true){ const L={x,y,x0:x,x1:x,y0:y,y1:y}; LAMPS.push(L); gridAdd(LG,L); } acc+=32; }
+        { const L={x,y,r,x0:x,x1:x,y0:y,y1:y}; LAMPS.push(L); } acc+=32; }
       acc-=l; } } }
 const WATER = MAP.w.filter(p=>p.length>=6).map(p=>bbox(p,{p}));
 const WATERH = (MAP.wh||[]).filter(p=>p.length>=6).map(p=>bbox(p,{p})); // îles (trous dans l'eau)
 const GREEN = MAP.g.filter(p=>p.length>=6).map(p=>bbox(p,{p}));
 const ROADS = [], RG = new Map();
 for(const r of MAP.r){ if(r.p.length<4) continue; bbox(r.p,r); r.x0-=r.w;r.y0-=r.w;r.x1+=r.w;r.y1+=r.w; ROADS.push(r); gridAdd(RG,r); }
+// le point (x,y) est-il sur la chaussée d'une rue (autre que `ex`) ? Sert à ne rien planter au milieu d'une voie
+// parallèle (ponts à deux chaussées, boulevards) : lampadaires, poteaux de feux, parapets.
+function onRoad(x,y,ex,m=0.4){ for(const r of gridQuery(RG,x,y,x,y,[])){ if(r===ex||r.t==='service'||r.t==='pedestrian') continue; const p=r.p, h=r.w/2+m; // voies de circulation seulement
+    for(let i=0;i+3<p.length;i+=2){ const ax=p[i],ay=p[i+1],bx=p[i+2]-ax,by=p[i+3]-ay,L2=bx*bx+by*by||1,t=clamp(((x-ax)*bx+(y-ay)*by)/L2,0,1); if((ax+bx*t-x)**2+(ay+by*t-y)**2<h*h) return true; } }
+  return false; }
+{ const keep=LAMPS.filter(L=>!onRoad(L.x,L.y,L.r)&&!hitsBuilding(L.x,L.y)); LAMPS.length=0; for(const L of keep){ LAMPS.push(L); gridAdd(LG,L); } }
 // noms de rues : ancres {x,y,ang,n} tous les ~130 m le long des rues nommées (grille LBG)
 const LABELS=[], LBG=new Map();
 { const seen=new Map();
@@ -391,7 +397,9 @@ function sigGroup(S,a){ return Math.abs(wrapA(2*(a-S.ref)))/2 < Math.PI/4 ? 0 : 
   // approches (arêtes entrantes venant de l'extérieur du carrefour) pour le rendu
   for(const S of SIGS) for(const v of S.nodes) for(const u of CRADJ[v]){ if(NSIG[u]===NSIG[v]) continue;
     const k=CADJ[u].indexOf(v), ex=NX[v]-NX[u], ey=NY[v]-NY[u], l=Math.hypot(ex,ey)||1;
-    S.app.push({u,v,fx:ex/l,fy:ey/l,ew:CADJW[u][k],one:CADJO[u][k],l,g:sigGroup(S,Math.atan2(ey,ex))}); }
+    const A={u,v,fx:ex/l,fy:ey/l,ew:CADJW[u][k],one:CADJO[u][k],l,g:sigGroup(S,Math.atan2(ey,ex))}, sd=NW[v]/2+2.5;
+    let o=A.ew/2+0.9; for(let q=0;q<8;q++){ const px=NX[v]-A.fx*sd-A.fy*o, py=NY[v]-A.fy*sd+A.fx*o; if(!onRoad(px,py,null,0.2)&&!hitsBuilding(px,py)) break; o+=1.5; }
+    A.o=o; S.app.push(A); }
 }
 let GT=0; // horloge de jeu (s)
 const CYCLE=30;
@@ -1013,7 +1021,7 @@ function drawCity(vx0,vy0,vx1,vy1){
 const SIGCOL=['#3ddc6a','#ffc21a','#ff3b30'], SIGGLOW=['rgba(61,220,106,.28)','rgba(255,194,26,.3)','rgba(255,59,48,.3)'];
 function drawSignalHeads(vx0,vy0,vx1,vy1){
   for(const G of SIGS){ if(G.cx<vx0-40||G.cx>vx1+40||G.cy<vy0-40||G.cy>vy1+40) continue;
-    for(const a of G.app){ const d=stopDist(a.v); if(a.l<d+1) continue; const st=sigState(G,a.g), o=a.ew/2+0.9;
+    for(const a of G.app){ const d=stopDist(a.v); if(a.l<d+1) continue; const st=sigState(G,a.g), o=a.o;
       const x=NX[a.v]-a.fx*d-a.fy*o, y=NY[a.v]-a.fy*d+a.fx*o;
       ctx.fillStyle=SIGGLOW[st]; ctx.beginPath(); ctx.arc(x,y,1.5,0,7); ctx.fill();
       ctx.fillStyle='#1d2026'; ctx.fillRect(x-0.6,y-0.6,1.2,1.2);
@@ -1492,7 +1500,7 @@ function init3D(){
     } else {
       layer(r,r.w+4,0.10,C.bedge); layer(r,r.w,0.12,r.t==='pedestrian'?C.bped:C.bdeck);
       for(let i=0;i+3<p.length;i+=2){ const x0=p[i],z0=p[i+1],x1=p[i+2],z1=p[i+3], l=Math.hypot(x1-x0,z1-z0)||1, nx=-(z1-z0)/l, nz=(x1-x0)/l, o=r.w/2+1.8, A=at((x0+x1)/2,(z0+z1)/2);
-        for(const s of [-1,1]){ const ax=x0+nx*o*s, az=z0+nz*o*s, bx=x1+nx*o*s, bz=z1+nz*o*s;
+        for(const s of [-1,1]){ const ax=x0+nx*o*s, az=z0+nz*o*s, bx=x1+nx*o*s, bz=z1+nz*o*s; if(onRoad((ax+bx)/2,(az+bz)/2,r,1.2)) continue;
           quad3(A,[ax,0.1,az],[bx,0.1,bz],[bx,1.1,bz],[ax,1.1,az],shade3(C.para,faceK(nx*s,nz*s))); } }
     }
     if(car && r.w>=12){ const y=r.b?0.14:0.1;  // pointillés axiaux
@@ -1634,7 +1642,8 @@ function render3D(){
   if(!cam3.init){ cam3.yaw=yawT; cam3.d=pc?8:4; cam3.init=true; }
   cam3.yaw += wrapA(yawT-cam3.yaw)*(pc?0.09:0.035);
   const portrait=H>W, dist=(pc?5.3+sp*0.055:3.4)*(portrait?1.35:1), hgt=(pc?1.95+sp*0.012:1.85)*(portrait?1.2:1), fx=Math.cos(cam3.yaw), fz=Math.sin(cam3.yaw);
-  let d=dist; for(let s=0.8;s<=dist;s+=0.5){ if(hitsBuilding(px-fx*s,pz-fz*s)){ d=Math.max(0.8,s-0.7); break; } }
+  // la caméra garde ~0,9 m de marge de chaque côté (sinon elle se colle aux murs dans les ruelles)
+  let d=dist; for(let s=0.8;s<=dist;s+=0.5){ const cx=px-fx*s, cz=pz-fz*s; if(hitsBuilding(cx,cz)||(s>1.6&&(hitsBuilding(cx-fz*0.9,cz+fx*0.9)||hitsBuilding(cx+fz*0.9,cz-fx*0.9)))){ d=Math.max(0.8,s-0.7); break; } }
   cam3.d += (d-cam3.d)*(d<cam3.d?0.5:0.06);
   const sh=shake*0.5, eye=[px-fx*cam3.d+(Math.random()-.5)*sh, hgt+(dist-cam3.d)*0.45+(Math.random()-.5)*sh, pz-fz*cam3.d];
   let ctr=[px+fx*(pc?8:4), pc?1.25:1.4, pz+fz*(pc?8:4)];
@@ -1701,7 +1710,7 @@ function render3D(){
   if(!pc) pedBox3(D,{x:px,y:pz,a:player.a,state:'walk',ph:player.ph},col3('#ffcc33'),col3('#e0b48e'));
   const pole=col3('#30343a'), head=col3('#1d2026');
   for(const G of SIGS){ if(!vis3(G.cx,G.cy,150)) continue;
-    for(const a of G.app){ const sd=stopDist(a.v); if(a.l<sd+1) continue; const st=sigState(G,a.g), o=a.ew/2+0.9,
+    for(const a of G.app){ const sd=stopDist(a.v); if(a.l<sd+1) continue; const st=sigState(G,a.g), o=a.o,
       x=NX[a.v]-a.fx*sd-a.fy*o, z=NY[a.v]-a.fy*sd+a.fx*o, ang=Math.atan2(-a.fy,-a.fx);
       box3(D,x,z,ang,0,0,0.08,0.08,0,3.1,pole); box3(D,x,z,ang,0,0,0.18,0.2,3.0,4.0,head);
       EMIT=true; box3(D,x,z,ang,0.1,0,0.12,0.15,[3.75,3.5,3.25][st]-0.11,[3.75,3.5,3.25][st]+0.11,col3(SIGCOL[st])); EMIT=false; } }
@@ -1902,7 +1911,7 @@ function renderReel(){
       CZ.viewer.resolutionScale=(TOUCH?Math.min(1,1.8/(devicePixelRatio||1)):1)*(CZ.q>3?0.5:CZ.q>2.2?0.62:CZ.q>1.5?0.8:1); } }
   CZ.ts.maximumScreenSpaceError = (TOUCH ? [12,14,18] : [8,9,12])[CAMLV]*CZ.q;
   if(CAMLV){ dist=[0,26,42][CAMLV]*(portrait?1.2:1)+sp*0.25; hgt=[0,22,68][CAMLV]*(portrait?1.2:1); }
-  let d=dist; if(!CAMLV) for(let s=0.8;s<=dist;s+=0.5){ if(hitsBuilding(px-fx*s,py-fy*s)){ d=Math.max(0.8,s-0.7); break; } }
+  let d=dist; if(!CAMLV) for(let s=0.8;s<=dist;s+=0.5){ const cx=px-fx*s, cy=py-fy*s; if(hitsBuilding(cx,cy)||(s>1.6&&(hitsBuilding(cx-fy*0.9,cy+fx*0.9)||hitsBuilding(cx+fy*0.9,cy-fx*0.9)))){ d=Math.max(0.8,s-0.7); break; } }
   cam3.d+=(d-cam3.d)*(d<cam3.d?0.5:0.06);
   const sh=shake*0.5, g0=HPLAYER;
   const eye=czPos(px-fx*cam3.d+(Math.random()-.5)*sh, py-fy*cam3.d, g0+hgt+(dist-cam3.d)*0.45+(Math.random()-.5)*sh), ctr=czPos(px+fx*4, py+fy*4, g0+(pc?1.1:1.3));
@@ -1930,7 +1939,7 @@ function renderReel(){
   // --- points lumineux : feux tricolores, gyrophares, phares/feux arrière la nuit
   let pi=0; const PT=(x,y,h,col,size)=>{ if(pi>=CZ.P.length) return; const q=CZ.P[pi++]; q.position=czPos(x,y,h); q.color=czCol(col); q.pixelSize=size; q.show=true; };
   for(const G of SIGS){ if(Math.abs(G.cx-px)>130||Math.abs(G.cy-py)>130) continue;
-    for(const a of G.app){ const sd=stopDist(a.v); if(a.l<sd+1) continue; const o=a.ew/2+0.9, x=NX[a.v]-a.fx*sd-a.fy*o, y=NY[a.v]-a.fy*sd+a.fx*o;
+    for(const a of G.app){ const sd=stopDist(a.v); if(a.l<sd+1) continue; const o=a.o, x=NX[a.v]-a.fx*sd-a.fy*o, y=NY[a.v]-a.fy*sd+a.fx*o;
       PT(x,y,groundH(x,y,true)+3.4,['#3ddc6a','#ffc21a','#ff3b30'][sigState(G,a.g)],9); } }
   const on=(blink*6|0)%2;
   for(const c of shownCars){ const g=groundH(c.x,c.y,false), f=[Math.cos(c.a),Math.sin(c.a)], r=[-f[1],f[0]], TT=carVT(c).T;
