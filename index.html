@@ -145,7 +145,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261114-223924'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261114-224353'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1156,6 +1156,8 @@ let EMIT=false; // sommets émissifs (non assombris la nuit)
 function tri3(A,x0,y0,z0,x1,y1,z1,x2,y2,z2,c,u0=(EMIT?-2000:NOTEX),v0=0,u1=u0,v1=0,u2=u0,v2=0){
   A.push(x0,y0,z0,c[0],c[1],c[2],u0,v0, x1,y1,z1,c[0],c[1],c[2],u1,v1, x2,y2,z2,c[0],c[1],c[2],u2,v2); }
 const QE=[-2000,0,-2000,0,-2000,0,-2000,0];
+function quad3g(A,a,b,c,d,c0,c1,uv){ const U=uv||Q0, P=[a,b,c,a,c,d], C=[c0,c0,c1,c0,c1,c1], I=[0,2,4,0,4,6];
+  for(let k=0;k<6;k++) A.push(P[k][0],P[k][1],P[k][2],C[k][0],C[k][1],C[k][2],U[I[k]],U[I[k]+1]); }
 function quad3(A,a,b,c,d,col,uv){ const U=uv||(EMIT?QE:Q0);
   tri3(A,a[0],a[1],a[2],b[0],b[1],b[2],c[0],c[1],c[2],col,U[0],U[1],U[2],U[3],U[4],U[5]);
   tri3(A,a[0],a[1],a[2],c[0],c[1],c[2],d[0],d[1],d[2],col,U[0],U[1],U[4],U[5],U[6],U[7]); }
@@ -1328,7 +1330,11 @@ void main(){ vec3 col=vc; float vd=distance(vp,E); bool glass=false;
     if(glass){ float h=fract(sin(dot(floor(vt)+floor(vp.xz/9.0),vec2(12.9898,78.233)))*43758.5453);
       if(h<0.4) col=vec3(1.0,0.78,0.45)*(0.75+0.6*h); }
   }
-  col=mix(col,F,smoothstep(FR.x,FR.y,vd)); gl_FragColor=vec4(col,A); }`;
+  if(vp.y<0.3 && vt.x>-1500.0 && (vt.x<=-999.0 || vt.y<48.0)){ // sol : grain fin proche + grandes plaques, estompé au loin
+    float g1=fract(sin(dot(floor(vp.xz*11.0),vec2(12.9898,78.233)))*43758.5453), g2=fract(sin(dot(floor(vp.xz*0.4),vec2(39.346,11.135)))*43758.5453);
+    col*=1.0+((g1-0.5)*0.11*clamp(1.0-vd/30.0,0.0,1.0)+(g2-0.5)*0.07)*step(0.5,A); }
+  if(vt.x>-2500.0) col=mix(col,F,smoothstep(FR.x,FR.y,vd));
+  gl_FragColor=vec4(col,A); }`;
 
 function init3D(){
   if(G3) return true;
@@ -1381,6 +1387,10 @@ function init3D(){
     const px=NX[a.v]-a.fx*d, pz=NY[a.v]-a.fy*d, rx=-a.fy, rz=a.fx, hw=a.ew/2, s0=a.one?-hw:0;
     seg(at(px,pz),px+rx*s0,pz+rz*s0,px+rx*hw,pz+rz*hw,0.45,0.1,C.stop); }
   const STONE=[0.9,0.87,0.8];
+  // passages piétons : bandes blanches juste après la ligne d'arrêt, sur toute la largeur de la chaussée
+  for(const G of SIGS) for(const a of G.app){ const d=stopDist(a.v); if(a.l<d+5) continue;
+    const bx=NX[a.v]-a.fx*(d-0.7), bz=NY[a.v]-a.fy*(d-0.7), rx=-a.fy, rz=a.fx, hw=a.ew/2, A=at(bx,bz);
+    for(let q=-hw+0.5;q<=hw-0.5;q+=1.0) seg(A,bx+rx*q,bz+rz*q,bx+rx*q+a.fx*2.8,bz+rz*q+a.fy*2.8,0.5,0.105,C.stop); }
   // bâtiments : murs texturés (1 travée = 3,3 m, 1 étage = 3,1 m) + toits
   for(const b of BUILD){ const p=b.p, n=p.length, A=at(b.cx,b.cy), wc=col3(b.wall[0]);
     const R=b.pitch ? roofRidge(p) : null, hip=R && R.rect>=0.72 && R.w>=2;
@@ -1390,12 +1400,11 @@ function init3D(){
       if(!tex){ quad3(A,[x0,0,z0],[x1,0,z1],[x1,h,z1],[x0,h,z0],shade3(wc,fk),null); continue; }
       const c=shade3(ST.wc,fk), narrow=l<2.2, row=narrow?7:ST.row, gh=(ST.grow>=0&&h>9)?3.9:0;
       const u1=Math.max(1,Math.round(l/3.3)), nf=Math.max(1,Math.round((h-gh)/3.1)), VB=64*(row+1);
-      quad3(A,[x0,gh,z0],[x1,gh,z1],[x1,h,z1],[x0,h,z0],c,[0,VB+nf,u1,VB+nf,u1,VB,0,VB]);
+      quad3g(A,[x0,gh,z0],[x1,gh,z1],[x1,h,z1],[x0,h,z0],shade3(c,gh?0.93:0.7),shade3(c,1.06),[0,VB+nf,u1,VB+nf,u1,VB,0,VB]);
       if(gh){ const gr=narrow?7:ST.grow, ug=Math.max(1,Math.round(l/(gr===4?4.6:3.6))), VG=64*(gr+1);
-        quad3(A,[x0,0,z0],[x1,0,z1],[x1,gh,z1],[x0,gh,z0],c,[0,VG+1,ug,VG+1,ug,VG,0,VG]); }
-      if(ST.corn && l>4 && !TOUCH){ /* pas sur mobile : trop de géométrie */ const o=0.32, y0=h-0.5, ax=x0+nx*o, az=z0+nz*o, bx=x1+nx*o, bz=z1+nz*o;      // corniche en pierre
-        quad3(A,[ax,y0,az],[bx,y0,bz],[bx,h,bz],[ax,h,az],shade3(STONE,fk),null);
-        quad3(A,[x0,y0,z0],[x1,y0,z1],[bx,y0,bz],[ax,y0,az],shade3(STONE,0.55),null); } }
+        quad3g(A,[x0,0,z0],[x1,0,z1],[x1,gh,z1],[x0,gh,z0],shade3(c,0.68),shade3(c,0.93),[0,VG+1,ug,VG+1,ug,VG,0,VG]); }
+      if(ST.corn && l>6 && !TOUCH){ /* pas sur mobile : trop de géométrie */ const o=0.32, y0=h-0.5, ax=x0+nx*o, az=z0+nz*o, bx=x1+nx*o, bz=z1+nz*o;      // corniche en pierre
+        quad3(A,[ax,y0,az],[bx,y0,bz],[bx,h,bz],[ax,h,az],shade3(STONE,fk),null); } }
     const rc=col3(b.roof);
     if(hip){ // chaque arête du pied de toit monte vers le faîtage (projection sur la ligne de faîte)
       const ht=Math.min(b.h, h+R.w*0.75); // pente ≤ ~37° (le faîte « max » inclut parfois clochers, cheminées…)
@@ -1419,8 +1428,14 @@ function init3D(){
   const trunk=col3('#5a4632');
   for(const t of TREES){ const A=at(t.x,t.y); box3(A,t.x,t.y,0,0,0,0.18,0.18,0,t.hf+0.3,trunk);
     const c=col3(t.col), mid=(t.h+t.hf)/2+0.4, top=t.h, bot=t.hf, r=t.r;
-    for(let k=0;k<8;k++){ const a0=k*Math.PI/4+0.2, a1=a0+Math.PI/4, x0=t.x+Math.cos(a0)*r, z0=t.y+Math.sin(a0)*r, x1=t.x+Math.cos(a1)*r, z1=t.y+Math.sin(a1)*r, am=(a0+a1)/2, kf=faceK(Math.cos(am),Math.sin(am));
-      tri3(A,t.x,top,t.y,x0,mid,z0,x1,mid,z1,shade3(c,kf*1.06)); tri3(A,t.x,bot,t.y,x1,mid,z1,x0,mid,z0,shade3(c,kf*0.78)); }
+    if(TOUCH){ for(let k=0;k<8;k++){ const a0=k*Math.PI/4+0.2, a1=a0+Math.PI/4, x0=t.x+Math.cos(a0)*r, z0=t.y+Math.sin(a0)*r, x1=t.x+Math.cos(a1)*r, z1=t.y+Math.sin(a1)*r, am=(a0+a1)/2, kf=faceK(Math.cos(am),Math.sin(am));
+      tri3(A,t.x,top,t.y,x0,mid,z0,x1,mid,z1,shade3(c,kf*1.06)); tri3(A,t.x,bot,t.y,x1,mid,z1,x0,mid,z0,shade3(c,kf*0.78)); } }
+    else { const NS=5, PR=[[0,0.4],[0.3,1],[0.7,0.8],[1,0]], Hc=top-bot, /* 25 triangles par arbre : léger */ sd=Math.abs(Math.round(t.x*13.7+t.y*7.3));
+      const jit=(i,k)=>0.86+0.28*(((sd+i*17+(k%NS)*31)*2654435761>>>0)%1000)/1000;   // rayon irrégulier, propre à chaque arbre
+      const V=(i,k)=>{ const an=k*2*Math.PI/NS+sd, rr=r*PR[i][1]*(PR[i][1]?jit(i,k):0); return [t.x+Math.cos(an)*rr, bot+Hc*PR[i][0], t.y+Math.sin(an)*rr]; };
+      for(let i=0;i<3;i++) for(let k=0;k<NS;k++){ const am=(k+0.5)*2*Math.PI/NS+sd, kf=faceK(Math.cos(am),Math.sin(am))*(0.74+0.15*i)*(0.94+0.12*jit(i+3,k)-0.12);
+        const a=V(i,k), b=V(i,k+1), cc=V(i+1,k+1), dd=V(i+1,k), col=shade3(c,kf);
+        tri3(A,...a,...b,...cc,col); if(i<2) tri3(A,...a,...cc,...dd,col); } }
     const sx=t.x+SUNSH[0]*mid, sz=t.y+SUNSH[1]*mid, S2=sat(t.x,t.y);
     for(let k=0;k<8;k++){ const a0=k*Math.PI/4, a1=a0+Math.PI/4; tri3(S2,sx,YS,sz,sx+Math.cos(a0)*r,YS,sz+Math.sin(a0)*r,sx+Math.cos(a1)*r,YS,sz+Math.sin(a1)*r,K0); } }
   const chunks=[]; let nv=0;
@@ -1522,6 +1537,16 @@ function render3D(){
     const ls=gridQuery(LG,px-70,pz-70,px+70,pz+70,[]).map(l=>[l,(l.x-px)**2+(l.y-pz)**2]).sort((a,b)=>a[1]-b[1]).slice(0,10);
     ls.forEach(([l],i)=>LPv.set([l.x,6.0,l.y],i*3));
     gl.uniform4fv(L.CL,CLv); gl.uniform3fv(L.LP,LPv); } gl.uniform1f(L.A,1); gl.uniform1i(L.S,0); gl.activeTexture(gl.TEXTURE0);
+  // ciel : horizon = couleur du brouillard (les lointains s'y fondent), zénith plus soutenu
+  { const Sd=[], zen=NIGHT?[0.015,0.03,0.075]:[0.36,0.6,0.86], hz=SK, mixc=(t)=>[hz[0]+(zen[0]-hz[0])*t,hz[1]+(zen[1]-hz[1])*t,hz[2]+(zen[2]-hz[2])*t];
+    const RG=[[-0.12,0],[0.04,0],[0.22,0.4],[0.6,0.85],[1,1]], NSK=12, Rr=90;
+    const V=(i,k)=>{ const el=RG[i][0]*Math.PI/2, an=k*2*Math.PI/NSK; return [eye[0]+Math.cos(an)*Math.cos(el)*Rr, eye[1]+Math.sin(el)*Rr, eye[2]+Math.sin(an)*Math.cos(el)*Rr]; };
+    for(let i=0;i<4;i++){ const c0=mixc(RG[i][1]), c1=mixc(RG[i+1][1]);
+      for(let k=0;k<NSK;k++){ const a=V(i,k), b=V(i,k+1), c=V(i+1,k+1), d=V(i+1,k), P=[a,b,c,a,c,d], Cc=[c0,c0,c1,c0,c1,c1];
+        for(let q=0;q<6;q++) Sd.push(P[q][0],P[q][1],P[q][2],Cc[q][0],Cc[q][1],Cc[q][2],-3000,0); } }
+    gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
+    gl.bindBuffer(gl.ARRAY_BUFFER,G3.tr); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(Sd),gl.DYNAMIC_DRAW); drawBuf3(G3.tr,Sd.length/8);
+    gl.enable(gl.DEPTH_TEST); gl.depthMask(true); }
   // sol
   gl.bindTexture(gl.TEXTURE_2D,G3.ground); drawBuf3(G3.groundBuf.b,G3.groundBuf.n);
   // tuiles
