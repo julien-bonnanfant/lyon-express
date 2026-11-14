@@ -153,7 +153,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261114-231143'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261114-231645'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1718,7 +1718,9 @@ function vtModelUrl(name){ const V=VT[name], T=[];
     for(const i of [0,1,2,0,2,3]) T.push(q[i][0],0.05,q[i][1],...k); }
   return gltfTris(T); }
 function pedPoseUrl(s,shirt){ const T=[], C=[PANTS,shirt,[0.85,0.68,0.55],HAIR];
-  pedTrisLocal(s,(a,b,c,ci)=>{ const cc=C[ci]; for(const v of [a,b,c]) T.push(v[0],v[2],v[1],cc[0],cc[1],cc[2]); }); return gltfTris(T); }
+  pedTrisLocal(s,(a,b,c,ci)=>{ const cc=C[ci]; for(const v of [a,b,c]) T.push(v[0],v[2],v[1],cc[0],cc[1],cc[2]); });
+  for(let k=0;k<8;k++){ const a0=k*Math.PI/4, a1=a0+Math.PI/4, r=0.42; T.push(0.05,0.04,0, 0.05,0.05,0.06, 0.05+Math.cos(a0)*r,0.04,Math.sin(a0)*r*0.8, 0.05,0.05,0.06, 0.05+Math.cos(a1)*r,0.04,Math.sin(a1)*r*0.8, 0.05,0.05,0.06); } // ombre de contact
+  return gltfTris(T); }
 function carModelUrl(){ const T=[], W=[1,1,1], G=[0.15,0.19,0.24], K=[0.08,0.08,0.08];
   gBox(T,-2.2,2.2,0.28,0.98,-0.95,0.95,W); gBox(T,-1.48,0.68,0.98,1.44,-0.82,0.82,G); gBox(T,-1.35,0.55,1.44,1.5,-0.76,0.76,W);
   for(const sx of [-1.35,1.35]) for(const sz of [-0.82,0.82]) gBox(T,sx-0.34,sx+0.34,0,0.62,sz-0.14,sz+0.14,K);
@@ -1744,7 +1746,7 @@ async function initReel(){
   scene.screenSpaceCameraController.enableInputs=false; scene.fog.enabled=true; scene.fog.density=0.0006;
   // heure figée : Cesium éclaire selon l'horloge réelle (le soir, toute la scène était sombre) -> 15 juillet, 13 h locales
   viewer.clock.shouldAnimate=false; viewer.clock.currentTime=Cesium.JulianDate.fromIso8601('2023-07-15T11:00:00Z');
-  scene.highDynamicRange=false; scene.postProcessStages.fxaa.enabled=true; scene.skyAtmosphere.show=false; /* lissage bon marché au lieu du MSAA ×4 */
+  scene.highDynamicRange=false; scene.postProcessStages.fxaa.enabled=true; scene.skyAtmosphere.show=!TOUCH; /* lissage bon marché au lieu du MSAA ×4 ; atmosphère = dégradé du ciel (ordinateur seulement) */
   if(scene.skyBox) scene.skyBox.show=false; if(scene.sun) scene.sun.show=false; if(scene.moon) scene.moon.show=false; // sans atmosphère, le fond d'étoiles apparaissait : ciel = couleur de fond scene.light=new Cesium.SunLight({intensity:1.15}); // 2.0 par défaut : photos délavées
   if(TOUCH) viewer.resolutionScale=Math.min(1,1.8/(devicePixelRatio||1));
   const ts=await Cesium.Cesium3DTileset.fromUrl(MESH_URL,{maximumScreenSpaceError:TOUCH?9:3.5,cacheBytes:(TOUCH?320:1024)*1024*1024,skipLevelOfDetail:true,dynamicScreenSpaceError:true});
@@ -1752,16 +1754,29 @@ async function initReel(){
   // photomaillage affiché SANS éclairage : ses textures sont des photos (ombres et lumière déjà dedans) ;
   // l'éclairage du moteur les blanchissait au soleil et les noircissait à l'ombre
   try{ ts.customShader=new Cesium.CustomShader({lightingModel:Cesium.LightingModel.UNLIT}); }catch(e){ console.warn(e); }
-  const mk=async(url,n)=>{ const out=[]; for(let i=0;i<n;i++){ const m=await Cesium.Model.fromGltfAsync({url,colorBlendMode:Cesium.ColorBlendMode.HIGHLIGHT,show:false,forwardAxis:Cesium.Axis.X,upAxis:Cesium.Axis.Y}); scene.primitives.add(m); out.push(m); } return out; };
-  const pools={}; for(const t of ['citadine','berline','suv','van','police']){ const big=t!=='van'&&t!=='police'; pools[t]=await mk(vtModelUrl(t),TOUCH?(big?8:4):(big?13:6)); }
+  const mk=async(url,n)=>{ const out=[]; for(let i=0;i<n;i++){ const m=await Cesium.Model.fromGltfAsync({url,colorBlendMode:Cesium.ColorBlendMode.HIGHLIGHT,show:false,forwardAxis:Cesium.Axis.X,upAxis:Cesium.Axis.Y});
+      try{ m.imageBasedLighting.imageBasedLightingFactor=new Cesium.Cartesian2(0.45,0.15); }catch(_){} // l'ambiance par défaut délavait les couleurs
+      scene.primitives.add(m); out.push(m); } return out; };
+  const pools={}; for(const t of ['citadine','berline','suv','van','police']){ const big=t!=='van'&&t!=='police'; pools[t]=await mk(vtModelUrl(t),TOUCH?(big?8:4):(big?13:6));
+    for(const m of pools[t]){ try{ m.customShader=new Cesium.CustomShader({uniforms:{u_tint:{type:Cesium.UniformType.VEC3,value:new Cesium.Cartesian3(1,1,1)}},
+        fragmentShaderText:`void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material){ vec3 c=fsInput.attributes.color_0.rgb; if(min(c.r,min(c.g,c.b))>0.93) material.diffuse=u_tint; }`}); m._tint=''; }catch(e){ console.warn(e); } } }
   const carsM=Object.values(pools).flat(), pedU=pedModelUrl();
   // piétons : pas de teinte (elle colorerait aussi la peau) -> 6 tenues × 3 poses de marche, permutées selon la phase du pas
   const pedPools={}, SH=[[0.75,0.22,0.17],[0.17,0.24,0.31],[0.09,0.63,0.52],[0.83,0.33,0.05],[0.93,0.94,0.95],[1,0.8,0.2]];
   for(let v=0;v<6;v++) for(let ps=0;ps<3;ps++) pedPools[v+'_'+ps]=await mk(pedPoseUrl([0.75,0,-0.75][ps],SH[v]),v===5?1:(TOUCH?3:5));
   const pedsM=Object.values(pedPools).flat(), arrow=(await mk(arrowModelUrl(),1))[0];
+  try{ arrow.customShader=new Cesium.CustomShader({lightingModel:Cesium.LightingModel.UNLIT}); }catch(_){} // repère de guidage : toujours lumineux
   const pts=scene.primitives.add(new Cesium.PointPrimitiveCollection());
   const P=[]; for(let i=0;i<220;i++) P.push(pts.add({show:false,pixelSize:8,color:Cesium.Color.WHITE}));
   // nuit : assombrissement global qui épargne les pixels très lumineux (phares, feux)
+  // « développement photo » : accentuation (les textures aériennes sont molles de près), saturation, contraste, vignettage
+  scene.postProcessStages.add(new Cesium.PostProcessStage({fragmentShader:`uniform sampler2D colorTexture; in vec2 v_textureCoordinates;
+    void main(){ vec2 px=1.0/czm_viewport.zw, uv=v_textureCoordinates; vec3 c=texture(colorTexture,uv).rgb;
+      vec3 n=(texture(colorTexture,uv+vec2(px.x,0.0)).rgb+texture(colorTexture,uv-vec2(px.x,0.0)).rgb+texture(colorTexture,uv+vec2(0.0,px.y)).rgb+texture(colorTexture,uv-vec2(0.0,px.y)).rgb)*0.25;
+      c=clamp(c+(c-n)*0.75,0.0,1.0);
+      float l=dot(c,vec3(0.299,0.587,0.114)); c=mix(vec3(l),c,1.2); c=(c-0.5)*1.05+0.53;
+      vec2 d=uv-0.5; c*=1.0-dot(d,d)*0.28;
+      out_FragColor=vec4(clamp(c,0.0,1.0),1.0); }`}));
   const night=scene.postProcessStages.add(new Cesium.PostProcessStage({fragmentShader:`uniform sampler2D colorTexture; in vec2 v_textureCoordinates;
     void main(){ vec4 c=texture(colorTexture,v_textureCoordinates); float l=dot(c.rgb,vec3(0.299,0.587,0.114));
       out_FragColor=vec4(mix(c.rgb*vec3(0.36,0.4,0.6), c.rgb, smoothstep(0.8,0.95,l)),1.0); }`}));
@@ -1799,7 +1814,7 @@ function renderReel(){
     if(CZ.ft.length>=30){ const avg=CZ.ft.reduce((a,b)=>a+b,0)/CZ.ft.length; CZ.ft.length=0;
       if(avg>36) CZ.q=Math.min(3,CZ.q*1.3); else if(avg<20) CZ.q=Math.max(1,CZ.q*0.92); /* entre les deux (écran à 30 Hz) : on ne touche à rien */
       CZ.viewer.resolutionScale=(TOUCH?Math.min(1,1.8/(devicePixelRatio||1)):1)*(CZ.q>2.4?0.6:CZ.q>1.6?0.78:1); } }
-  CZ.ts.maximumScreenSpaceError = (TOUCH ? [12,14,18] : [8,9,12])[CAMLV]*CZ.q;
+  CZ.ts.maximumScreenSpaceError = (TOUCH ? [10,14,18] : [5,8,12])[CAMLV]*CZ.q;
   if(CAMLV){ dist=[0,26,42][CAMLV]*(portrait?1.2:1)+sp*0.25; hgt=[0,22,68][CAMLV]*(portrait?1.2:1); }
   let d=dist; if(!CAMLV) for(let s=0.8;s<=dist;s+=0.5){ if(hitsBuilding(px-fx*s,py-fy*s)){ d=Math.max(0.8,s-0.7); break; } }
   cam3.d+=(d-cam3.d)*(d<cam3.d?0.5:0.06);
@@ -1810,13 +1825,14 @@ function renderReel(){
   CZ.viewer.camera.setView({destination:eye,orientation:{direction:dir,up}});
   if(window.__camR){ const R=window.__camR, e2=czPos(R.eye[0],R.eye[1],R.eye[2]), c2=czPos(R.ctr[0],R.ctr[1],R.ctr[2]); // débogage : caméra imposée (x, y jeu, hauteur ellipsoïdale)
     CZ.viewer.camera.setView({destination:e2,orientation:{direction:Cesium.Cartesian3.normalize(Cesium.Cartesian3.subtract(c2,e2,new Cesium.Cartesian3()),new Cesium.Cartesian3()),up:Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(e2,new Cesium.Cartesian3())}}); }
-  CZ.viewer.camera.frustum.fov=Cesium.Math.toRadians((pc?62:58)*(portrait?1.25:1)+Math.min(8,sp*0.25));
+  // Cesium applique `fov` au PLUS GRAND côté de l'écran : on convertit notre angle vertical (comme en vue 3D)
+  { const fv=Cesium.Math.toRadians((pc?62:58)*(portrait?1.25:1)+Math.min(8,sp*0.25)), asp=W/H; CZ.viewer.camera.frustum.fov = asp>1 ? 2*Math.atan(Math.tan(fv/2)*asp) : fv; }
   // --- voitures (les plus proches d'abord)
   const near=cars.map(c=>[c,(c.x-px)**2+(c.y-py)**2]).filter(e=>e[1]<200*200).sort((a,b)=>a[1]-b[1]);
   for(const m of CZ.carsM) m.show=false;
   const used={}, shownCars=[];
   for(const [c] of near){ const key=c.police?'police':(c.type||'berline'), pool=CZ.pools[key], k=used[key]||0; if(!pool||k>=pool.length) continue;
-    used[key]=k+1; const m=pool[k]; czPlace(m,c.x,c.y,groundH(c.x,c.y,true),c.a); m.color=czCol(c.police?'#f4f6f7':c.col); shownCars.push(c); }
+    used[key]=k+1; const m=pool[k]; czPlace(m,c.x,c.y,groundH(c.x,c.y,true),c.a); { const hx=c.police?'#f4f6f7':c.col; if(m.customShader){ if(m._tint!==hx){ m._tint=hx; const k=czCol(hx); m.customShader.setUniform('u_tint',new Cesium.Cartesian3(k.red,k.green,k.blue)); } } else m.color=czCol(hx); } shownCars.push(c); }
   // --- piétons + joueur à pied
   const pl=peds.map(p=>[p,(p.x-px)**2+(p.y-py)**2]).filter(e=>e[1]<120*120).sort((a,b)=>a[1]-b[1]);
   if(!pc) pl.unshift([{x:px,y:py,a:player.a,state:'walk',col:'#ffcc33',ph:player.ph,me:1},0]);
