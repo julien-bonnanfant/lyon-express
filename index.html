@@ -122,7 +122,7 @@
   <p id="shopstat"></p>
   <button id="shopclose">Reprendre la route</button>
 </div></div>
-<button id="bcam" class="panel" style="display:none" title="Hauteur de caméra en vue Réel (touche V)">Caméra : 3e personne</button>
+<button id="bcam" class="panel" style="display:none" title="Hauteur de caméra en vue Réel (touche V)">Caméra : aérienne</button>
 <div id="help" class="panel">
   <kbd>Z Q S D</kbd> / flèches : bouger<br>
   <kbd>E</kbd> : monter / descendre<br>
@@ -177,7 +177,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261115-001339'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261115-001716'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1585,18 +1585,22 @@ function drawBuf3(o,n){ const gl=G3.gl, L=G3.L; gl.bindBuffer(gl.ARRAY_BUFFER,o)
   gl.vertexAttribPointer(L.p,3,gl.FLOAT,false,32,0); gl.vertexAttribPointer(L.c,3,gl.FLOAT,false,32,12); gl.vertexAttribPointer(L.t,2,gl.FLOAT,false,32,24);
   gl.drawArrays(gl.TRIANGLES,0,n); }
 // piéton articulé : pavés {hx,hy,cy,z0,z1,pz pivot,ang,c} ; c : 0 pantalon, 1 haut, 2 peau, 3 cheveux ; s = balancement (-1..1)
-function pedParts(s){ const a=s*0.55; return [
-  {hx:.09,hy:.08,cy:-.1,z0:0,z1:.84,pz:.84,ang:a,c:0},{hx:.09,hy:.08,cy:.1,z0:0,z1:.84,pz:.84,ang:-a,c:0},
-  {hx:.12,hy:.2,cy:0,z0:.82,z1:1.42,pz:0,ang:0,c:1},
-  {hx:.06,hy:.05,cy:-.26,z0:.86,z1:1.4,pz:1.4,ang:-a*.8,c:1},{hx:.06,hy:.05,cy:.26,z0:.86,z1:1.4,pz:1.4,ang:a*.8,c:1},
-  {hx:.11,hy:.1,cy:0,z0:1.45,z1:1.7,pz:0,ang:0,c:2},{hx:.12,hy:.11,cy:0,z0:1.66,z1:1.77,pz:0,ang:0,c:3}]; }
+// Personnage : prismes elliptiques effilés (z0→z1, rayons bas rx0/ry0 et haut rx1/ry1, n côtés), articulés autour de pz.
+// c : 0 pantalon, 1 haut, 2 peau, 3 cheveux ; s = balancement de la marche (-1..1). ≈ 150 triangles.
+function pedParts(s){ const a=s*0.55, b=-a*0.8; return [
+  {cx:0,cy:-.09,z0:0,z1:.86,rx0:.07,ry0:.06,rx1:.085,ry1:.08,n:6,pz:.86,ang:a,c:0},{cx:0,cy:.09,z0:0,z1:.86,rx0:.07,ry0:.06,rx1:.085,ry1:.08,n:6,pz:.86,ang:-a,c:0},
+  {cx:0,cy:0,z0:.84,z1:1.42,rx0:.105,ry0:.16,rx1:.125,ry1:.205,n:8,pz:0,ang:0,c:1},
+  {cx:0,cy:-.25,z0:.82,z1:1.4,rx0:.042,ry0:.04,rx1:.06,ry1:.055,n:5,pz:1.38,ang:b,c:1},{cx:0,cy:.25,z0:.82,z1:1.4,rx0:.042,ry0:.04,rx1:.06,ry1:.055,n:5,pz:1.38,ang:-b,c:1},
+  {cx:0,cy:0,z0:1.4,z1:1.5,rx0:.05,ry0:.05,rx1:.05,ry1:.05,n:5,pz:0,ang:0,c:2},
+  {cx:.01,cy:0,z0:1.48,z1:1.72,rx0:.092,ry0:.082,rx1:.105,ry1:.095,n:8,pz:0,ang:0,c:2},
+  {cx:-.012,cy:0,z0:1.66,z1:1.775,rx0:.114,ry0:.104,rx1:.092,ry1:.084,n:8,pz:0,ang:0,c:3}]; }
 // emit(a,b,c,indiceCouleur,normaleLocale) ; repère local : x avant, y droite, z haut
 function pedTrisLocal(s,emit){
-  for(const q of pedParts(s)){ const cs=Math.cos(q.ang), sn=Math.sin(q.ang);
-    const V=(sx,sy,z)=>{ const x=sx*q.hx, dz=z-q.pz; return [x*cs+dz*sn, q.cy+sy*q.hy, q.pz-x*sn+dz*cs]; };
-    const p=[V(-1,-1,q.z0),V(1,-1,q.z0),V(1,1,q.z0),V(-1,1,q.z0),V(-1,-1,q.z1),V(1,-1,q.z1),V(1,1,q.z1),V(-1,1,q.z1)];
-    for(const [f,n] of [[[4,5,6,7],[0,0,1]],[[1,2,6,5],[1,0,0]],[[3,0,4,7],[-1,0,0]],[[0,1,5,4],[0,-1,0]],[[2,3,7,6],[0,1,0]]]){
-      emit(p[f[0]],p[f[1]],p[f[2]],q.c,n); emit(p[f[0]],p[f[2]],p[f[3]],q.c,n); } } }
+  for(const q of pedParts(s)){ const cs=Math.cos(q.ang), sn=Math.sin(q.ang), n=q.n;
+    const V=(k,top)=>{ const t=k*2*Math.PI/n, x=q.cx+(top?q.rx1:q.rx0)*Math.cos(t), y=q.cy+(top?q.ry1:q.ry0)*Math.sin(t), dz=(top?q.z1:q.z0)-q.pz; return q.pz ? [x*cs+dz*sn, y, q.pz-x*sn+dz*cs] : [x,y,dz]; };
+    const C=(()=>{ const dz=q.z1-q.pz; return q.pz ? [q.cx*cs+dz*sn, q.cy, q.pz-q.cx*sn+dz*cs] : [q.cx,q.cy,q.z1]; })();
+    for(let k=0;k<n;k++){ const tm=(k+0.5)*2*Math.PI/n, nr=[Math.cos(tm),Math.sin(tm),0], a0=V(k,0), a1=V(k+1,0), b0=V(k,1), b1=V(k+1,1);
+      emit(a0,a1,b1,q.c,nr); emit(a0,b1,b0,q.c,nr); emit(C,b0,b1,q.c,[0,0,1]); } } }
 const PANTS=[0.17,0.18,0.22], HAIR=[0.16,0.11,0.08];
 // poses de marche mises en cache (17 poses) : tableau plat [x,y,z, indiceCouleur, nx,ny,nz] par sommet
 const PEDPOSE=new Map();
@@ -1753,9 +1757,9 @@ let BUILDING3D=false;
 //   depuis 3 m au-dessus du sol connu (sous les arbres) ; repli : hauteur du joueur.
 // - Cesium ne sélectionne que les tuiles vues par la caméra : les rayons ne marchent que là où l'on regarde.
 // défaut : proche = 3e personne derrière la voiture (demande explicite de l'utilisateur, même si le photomaillage est plus beau de haut)
-let CAMLV=0; try{ const v=localStorage.getItem('lx_cam3'); if(v==='0'||v==='1'||v==='2') CAMLV=+v; }catch(_){}
-const CAM_NAME=['3e personne','haute','aérienne'];
-function toggleCam(){ CAMLV=(CAMLV+1)%3; cam3.init=false; $('bcam').textContent='Caméra : '+CAM_NAME[CAMLV]; try{ localStorage.setItem('lx_cam3',CAMLV); }catch(_){}
+let CAMLV=2; try{ const v=localStorage.getItem('lx_cam4'); if(v==='1'||v==='2') CAMLV=+v; }catch(_){} // jamais 0 : la vue rapprochée du photomaillage a été retirée (jugée « horrible » par l'utilisateur, à raison)
+const CAM_NAME=['','haute','aérienne'];
+function toggleCam(){ CAMLV=CAMLV===2?1:2; cam3.init=false; $('bcam').textContent='Caméra : '+CAM_NAME[CAMLV]; try{ localStorage.setItem('lx_cam4',CAMLV); }catch(_){}
   if(!REEL) toast('La caméra '+CAM_NAME[CAMLV]+' s’applique en vue Réel','#ffcc33'); }
 let REEL=false, CZ=null, CZLOAD=false, CZFAIL=false, VIEW='2d', VIEW_WANT='2d';
 const CESIUM_URL='https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/';
@@ -1972,7 +1976,7 @@ function renderReel(){
 }
 
 // ---- choix de la vue : 2D -> 3D -> Réel -> 2D (bouton / touche C), mémorisé dans 'lx_vue'
-const VIEW_NAME={'2d':'2D','3d':'3D','reel':'Réel'};
+const VIEW_NAME={'2d':'2D','3d':'3D','reel':'Photo aérienne'};
 function setView(v){
   if(v!=='2d' && !G3){ // la 3D stylisée sert aussi de vue d'attente pendant le chargement du Réel
     if(BUILDING3D) return; BUILDING3D=true; toast('Construction de la ville en 3D…','#ffcc33');
