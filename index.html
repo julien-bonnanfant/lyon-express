@@ -145,7 +145,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261114-224904'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261114-225533'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1051,6 +1051,11 @@ function curTarget(){ return mission.stage==='pickup' ? mission.from : mission.s
 function render(){
   if(REEL && CZ){ try{ renderReel(); }catch(e){ console.error(e); CZFAIL=true; toast('Vue Réel en erreur : vue 3D','#ff6b5b'); setView('3d'); }
     ctx.setTransform(DPR,0,0,DPR,0,0); ctx.clearRect(0,0,W,H);
+    // message de chargement : les photos 3D arrivent en quelques secondes ; sans lui on ne voit qu'un décor vide
+    if(CZ){ const st=CZ.ts.statistics, pend=st.numberOfPendingRequests+st.numberOfTilesProcessing;
+      if(!CZ.ready || pend>8){ const tx='Chargement du Lyon réel… '+(pend?'('+pend+' morceaux restants)':''); ctx.font='700 17px "Segoe UI",system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        const w=ctx.measureText(tx).width+36, x=W/2-w/2, y=H*0.3-20; ctx.fillStyle='rgba(18,20,26,.82)'; ctx.beginPath(); ctx.roundRect?ctx.roundRect(x,y,w,40,10):ctx.rect(x,y,w,40); ctx.fill();
+        ctx.fillStyle='#ffcc33'; ctx.fillText(tx,W/2,y+21); } }
     if(CZ) drawStreetNamesFloat((x,y,h)=>{ const w=Cesium.SceneTransforms.worldToWindowCoordinates(CZ.scene,czPos(x,y,h)); if(!w) return null;
       const cam=CZ.viewer.camera, v=Cesium.Cartesian3.subtract(czPos(x,y,h),cam.positionWC,new Cesium.Cartesian3()); if(Cesium.Cartesian3.dot(v,cam.directionWC)<1) return null; return [w.x,w.y]; },(x,y)=>groundH(x,y,false));
     drawMinimap(curTarget()); return; }
@@ -1690,13 +1695,13 @@ function loadCesium(){ return new Promise((res,rej)=>{ if(window.Cesium) return 
 async function initReel(){
   await loadCesium();
   const viewer=new Cesium.Viewer('cz',{baseLayer:false,animation:false,timeline:false,baseLayerPicker:false,geocoder:false,homeButton:false,sceneModePicker:false,
-    navigationHelpButton:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,useDefaultRenderLoop:false,msaaSamples:TOUCH?1:4});
+    navigationHelpButton:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,useDefaultRenderLoop:false,msaaSamples:1});
   const scene=viewer.scene;
   scene.globe.show=false; scene.backgroundColor=Cesium.Color.fromCssColorString('#b9cfe2'); scene.skyAtmosphere.show=true;
   scene.screenSpaceCameraController.enableInputs=false; scene.fog.enabled=true; scene.fog.density=0.0006;
   // heure figée : Cesium éclaire selon l'horloge réelle (le soir, toute la scène était sombre) -> 15 juillet, 13 h locales
   viewer.clock.shouldAnimate=false; viewer.clock.currentTime=Cesium.JulianDate.fromIso8601('2023-07-15T11:00:00Z');
-  scene.highDynamicRange=false; scene.light=new Cesium.SunLight({intensity:1.15}); // 2.0 par défaut : photos délavées
+  scene.highDynamicRange=false; scene.postProcessStages.fxaa.enabled=true; scene.skyAtmosphere.show=false; /* lissage bon marché au lieu du MSAA ×4 */ scene.light=new Cesium.SunLight({intensity:1.15}); // 2.0 par défaut : photos délavées
   if(TOUCH) viewer.resolutionScale=Math.min(1,1.8/(devicePixelRatio||1));
   const ts=await Cesium.Cesium3DTileset.fromUrl(MESH_URL,{maximumScreenSpaceError:TOUCH?9:3.5,cacheBytes:(TOUCH?320:1024)*1024*1024,skipLevelOfDetail:true,dynamicScreenSpaceError:true});
   scene.primitives.add(ts);
@@ -1744,7 +1749,13 @@ function renderReel(){
   const portrait=H>W, fx=Math.cos(cam3.yaw), fy=Math.sin(cam3.yaw);
   // 3 hauteurs de caméra : 0 proche (au ras du sol, photos floues), 1 haute, 2 aérienne (le photomaillage y est le plus réaliste)
   let dist=(pc?5.3+sp*0.055:3.4)*(portrait?1.35:1), hgt=(pc?1.95+sp*0.012:1.85)*(portrait?1.2:1);
-  CZ.ts.maximumScreenSpaceError = TOUCH ? [9,12,16][CAMLV] : [3.5,6,10][CAMLV]; // de haut, inutile de charger le détail le plus fin
+  // qualité adaptative : on mesure le temps réel entre deux images ; si ça ralentit (> 36 ms), on charge moins de
+  // détail (facteur q jusqu'à ×3) puis on baisse la résolution ; si la machine suit (< 20 ms), on remonte doucement
+  { const now=performance.now(), dtf=now-(CZ.lastT||now); CZ.lastT=now; CZ.ft=CZ.ft||[]; CZ.q=CZ.q||1; if(dtf>0&&dtf<250) CZ.ft.push(dtf);
+    if(CZ.ft.length>=30){ const avg=CZ.ft.reduce((a,b)=>a+b,0)/CZ.ft.length; CZ.ft.length=0;
+      if(avg>36) CZ.q=Math.min(3,CZ.q*1.3); else if(avg<20) CZ.q=Math.max(1,CZ.q*0.92); /* entre les deux (écran à 30 Hz) : on ne touche à rien */
+      CZ.viewer.resolutionScale=(TOUCH?Math.min(1,1.8/(devicePixelRatio||1)):1)*(CZ.q>2.4?0.6:CZ.q>1.6?0.78:1); } }
+  CZ.ts.maximumScreenSpaceError = (TOUCH ? [12,14,18] : [8,9,12])[CAMLV]*CZ.q;
   if(CAMLV){ dist=[0,26,42][CAMLV]*(portrait?1.2:1)+sp*0.25; hgt=[0,22,68][CAMLV]*(portrait?1.2:1); }
   let d=dist; if(!CAMLV) for(let s=0.8;s<=dist;s+=0.5){ if(hitsBuilding(px-fx*s,py-fy*s)){ d=Math.max(0.8,s-0.7); break; } }
   cam3.d+=(d-cam3.d)*(d<cam3.d?0.5:0.06);
