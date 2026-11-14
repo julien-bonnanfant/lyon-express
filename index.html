@@ -23,7 +23,7 @@
   #speed{right:12px;bottom:18px;font-size:22px;font-weight:700;text-align:right}
   #speed small{font-size:12px;color:var(--muted);font-weight:400}
   #toast{position:fixed;left:50%;top:22%;transform:translateX(-50%);font-size:34px;font-weight:800;text-shadow:0 3px 10px #000;pointer-events:none;opacity:0;transition:opacity .4s;text-align:center}
-  #help{right:12px;top:400px;font-size:12px;color:var(--muted);line-height:1.6}
+  #help{right:12px;top:440px;font-size:12px;color:var(--muted);line-height:1.6}
   #help kbd{background:#333842;color:#fff;border-radius:4px;padding:1px 6px;font-family:inherit}
   #start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,11,14,.82);z-index:10}
   #start .box{max-width:520px;padding:28px 32px;background:#20232b;border-radius:14px;box-shadow:0 20px 60px #000a}
@@ -38,9 +38,21 @@
   #cz{position:fixed;inset:0;display:none}
   #cz .cesium-viewer-bottom{display:none!important} /* crédits repris dans #credit */
   #c{position:relative}
-  #bcam{right:12px;top:352px;z-index:6;border:0;color:#bfe8c6;font:700 14px "Segoe UI",system-ui,sans-serif;cursor:pointer;padding:7px 12px;touch-action:none}
+  #bshop{right:12px;top:352px;z-index:6;border:0;color:#ffd9a0;font:700 14px "Segoe UI",system-ui,sans-serif;cursor:pointer;padding:7px 12px;touch-action:none}
+  #shop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(10,11,14,.8);z-index:9;touch-action:pan-y}
+  #shop .box{width:min(520px,92vw);max-height:90vh;overflow:auto;padding:20px 24px;background:#20232b;border-radius:14px;box-shadow:0 20px 60px #000a}
+  #shop h2{margin:0 0 4px;color:var(--accent);font-size:28px} #shop h3{margin:16px 0 8px;font-size:15px;color:var(--muted)}
+  #shopmoney{font-size:20px;font-weight:700;color:#7ee08a}
+  #shop .row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #ffffff14}
+  #shop .row b{flex:1} #shop .row small{color:var(--muted);display:block;font-weight:400}
+  #shop button{font:700 14px "Segoe UI",system-ui,sans-serif;border:0;border-radius:8px;padding:8px 14px;background:var(--accent);color:#222;cursor:pointer}
+  #shop button:disabled{background:#3a3f49;color:#8b8f97;cursor:default}
+  #shop .sw{width:34px;height:34px;border-radius:50%;padding:0;margin:0 8px 8px 0;border:3px solid transparent}
+  #shop .sw.cur{border-color:#fff}
+  #shopclose{margin-top:14px;width:100%}
+  #bcam{right:12px;top:392px;z-index:6;border:0;color:#bfe8c6;font:700 14px "Segoe UI",system-ui,sans-serif;cursor:pointer;padding:7px 12px;touch-action:none}
   #bmap{position:fixed;right:10px;top:10px;width:210px;height:210px;z-index:6;background:transparent;border:0;padding:0;cursor:zoom-in;touch-action:none}
-  body.mapbig #hud, body.mapbig #street, body.mapbig #speed, body.mapbig #help, body.mapbig #b3d, body.mapbig #bnight, body.mapbig #bsound, body.mapbig #bcam{display:none!important}
+  body.mapbig #hud, body.mapbig #street, body.mapbig #speed, body.mapbig #help, body.mapbig #b3d, body.mapbig #bnight, body.mapbig #bsound, body.mapbig #bcam, body.mapbig #bshop{display:none!important}
   #bmap.big{left:0;top:0;right:0;bottom:0;width:100%;height:100%;z-index:8;cursor:zoom-out}
   #bsound{right:12px;top:312px;z-index:6;border:0;color:#ddd;font:700 14px "Segoe UI",system-ui,sans-serif;cursor:pointer;padding:7px 12px;touch-action:none}
   #bHorn{right:calc(30px + env(safe-area-inset-right));bottom:calc(196px + env(safe-area-inset-bottom));width:58px;height:58px;font-size:11px}
@@ -65,11 +77,11 @@
   body.onfoot #bCar{bottom:calc(22px + env(safe-area-inset-bottom));width:76px;height:76px}
   body.touch #help, body.touch .konly{display:none!important}
   body:not(.touch) .tonly{display:none!important}
-  body.touch #speed{top:300px;bottom:auto;right:10px;font-size:18px;padding:5px 10px}
+  body.touch #speed{top:338px;bottom:auto;right:10px;font-size:18px;padding:5px 10px}
   body.touch #street{left:calc(10px + env(safe-area-inset-left));bottom:calc(20px + env(safe-area-inset-bottom));transform:none;font-size:12px;padding:4px 10px;max-width:42vw;overflow:hidden;text-overflow:ellipsis}
   body.touch #credit{left:calc(10px + env(safe-area-inset-left));bottom:calc(3px + env(safe-area-inset-bottom));font-size:9px}
   /* tablette (tactile, grand écran) : la vitesse passe sous la colonne de boutons, qui descend jusqu'à ~385 px */
-  @media (min-width:701px) and (min-height:501px){ body.touch #speed{top:396px} }
+  @media (min-width:701px) and (min-height:501px){ body.touch #speed{top:436px} }
   @media (max-width:700px),(max-height:500px){
     #hud{min-width:0;top:calc(8px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));padding:6px 10px}
     #money{font-size:19px} #wanted{font-size:16px;min-height:19px;letter-spacing:2px}
@@ -79,7 +91,8 @@
     #bnight{top:178px;right:10px;padding:6px 10px;font-size:13px}
     #bsound{top:216px;right:10px;padding:6px 10px;font-size:13px}
     #bmap{width:120px;height:120px}
-    #bcam{top:254px;right:10px;padding:6px 10px;font-size:13px}
+    #bshop{top:254px;right:10px;padding:6px 10px;font-size:13px}
+    #bcam{top:292px;right:10px;padding:6px 10px;font-size:13px}
     #start .box{padding:18px 20px;margin:10px;max-height:92vh;overflow:auto}
     #start h1{font-size:28px} #start p{font-size:14px}
   }
@@ -101,6 +114,14 @@
 <button id="bnight" class="panel" title="Jour / nuit (touche N)">Nuit</button>
 <button id="bmap" title="Carte en grand (touche Tab)"></button>
 <button id="bsound" class="panel" title="Son (touche M)">Son : oui</button>
+<button id="bshop" class="panel" title="Garage (touche G)">Garage</button>
+<div id="shop"><div class="box">
+  <h2>Garage</h2><div id="shopmoney"></div>
+  <h3>Voitures</h3><div id="shopcars"></div>
+  <h3>Peinture <small>(150 €)</small></h3><div id="shopcols"></div>
+  <p id="shopstat"></p>
+  <button id="shopclose">Reprendre la route</button>
+</div></div>
 <button id="bcam" class="panel" style="display:none" title="Hauteur de caméra en vue Réel (touche V)">Caméra : 3e personne</button>
 <div id="help" class="panel">
   <kbd>Z Q S D</kbd> / flèches : bouger<br>
@@ -112,7 +133,8 @@
   <kbd>H</kbd> : klaxon · <kbd>M</kbd> : son<br>
   <kbd>V</kbd> : hauteur de caméra (Réel)<br>
   <kbd>Tab</kbd> : carte en grand<br>
-  <kbd>I</kbd> : images par seconde
+  <kbd>I</kbd> : images par seconde<br>
+  <kbd>G</kbd> : garage
 </div>
 <div id="toast"></div>
 <div id="fps" style="display:none;position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:7;background:rgba(18,20,26,.8);color:#9fe8b0;font:700 12px 'Segoe UI',system-ui,sans-serif;padding:4px 10px;border-radius:8px;pointer-events:none"></div>
@@ -155,7 +177,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261114-232929'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261115-000519'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -389,9 +411,12 @@ const CAR_TYPES={ // L longueur, W largeur, belt ligne de caisse, roof pavillon,
   citadine:{L:3.8,W:1.72,belt:0.9, roof:1.47,ws:0.78,wt:0.08,rt:-1.15,rb:-1.62,r:0.30,af:1.22,ar:-1.22,p:0.34},
   berline: {L:4.6,W:1.82,belt:0.93,roof:1.44,ws:1.02,wt:0.22,rt:-1.0, rb:-1.62,r:0.32,af:1.42,ar:-1.36,p:0.36},
   suv:     {L:4.5,W:1.88,belt:1.05,roof:1.73,ws:1.0, wt:0.35,rt:-1.72,rb:-2.05,r:0.37,af:1.42,ar:-1.36,p:0.24},
+  sport:   {L:4.4,W:1.86,belt:0.82,roof:1.24,ws:0.72,wt:-0.08,rt:-1.02,rb:-1.62,r:0.33,af:1.38,ar:-1.3,p:0.02},
   van:     {L:5.0,W:2.0, belt:1.12,roof:2.28,ws:1.78,wt:1.3, rt:-2.42,rb:-2.47,r:0.34,af:1.68,ar:-1.58,p:0.06,cargo:true}};
 const ROLE={body:0,glass:1,tire:2,rim:3,dark:4,light:5,tail:6,stripe:7,barA:8,barB:9};
-function pickCarType(){ const r=Math.random(); return r<0.34?'citadine':r<0.70?'berline':r<0.90?'suv':'van'; }
+function pickCarType(){ const r=Math.random(); return r<0.33?'citadine':r<0.68?'berline':r<0.87?'suv':r<0.97?'van':'sport'; }
+// performances : a = accélération (m/s²), v = vitesse où l'accélération s'annule (m/s)
+const PERF={citadine:{a:10,v:31},berline:{a:11,v:34},suv:{a:10.5,v:33},van:{a:8.5,v:29},sport:{a:15.5,v:47}};
 const VT={}; // gabarits : VT[nom] = {P:Float32Array (9 par triangle), N (3 par triangle), R (rôle par triangle), n}
 function buildVehicle(name,police){
   const T=CAR_TYPES[name], L=T.L, W=T.W, tris=[], add=(a,b,c,role)=>tris.push([a,b,c,role]);
@@ -459,9 +484,13 @@ function placeOnEdge(o,u,ADJ){ const opts=ADJ[u]; const k=(Math.random()*opts.le
   o.x=NX[u]; o.y=NY[u]; o.a=Math.atan2(NY[o.v]-NY[u],NX[o.v]-NX[u]); }
 function nodeInRing(list,r0,r1){ for(let k=0;k<40;k++){ const i=pick(list); const d=Math.hypot(NX[i]-player.x,NY[i]-player.y); if(d>=r0&&d<=r1) return i; } return -1; }
 
-const player = {x:0,y:0,a:0,car:null,money:0,wanted:0,seen:0,hitCD:0,busted:0,sigC:-1};
+// sauvegarde automatique sur l'appareil (localStorage 'lx_save') : argent, voitures possédées, voiture et couleur choisies, courses réussies
+const SAVE={money:0,owned:['berline'],car:'berline',col:'#ffcc33',done:0};
+try{ const j=JSON.parse(localStorage.getItem('lx_save')||'null'); if(j&&typeof j==='object'){ Object.assign(SAVE,j); if(!Array.isArray(SAVE.owned)||!SAVE.owned.includes('berline')) SAVE.owned=['berline']; if(!CAR_TYPES[SAVE.car]) SAVE.car='berline'; SAVE.money=Math.max(0,+SAVE.money||0); SAVE.done=+SAVE.done||0; } }catch(_){}
+function saveGame(){ SAVE.money=player.money; try{ localStorage.setItem('lx_save',JSON.stringify(SAVE)); }catch(_){} }
+const player = {x:0,y:0,a:0,car:null,money:SAVE.money,wanted:0,seen:0,hitCD:0,busted:0,sigC:-1};
 const start = POI[0]; player.x=start.x+6; player.y=start.y+6;
-{ const u=nearestNode(start.x,start.y); const c=makeCar(0,0,0,'free'); placeOnEdge(c,u,CADJ); c.col='#ffcc33'; c.type='berline'; c.l=CAR_TYPES.berline.L; c.w=CAR_TYPES.berline.W; // voiture de départ : toujours une berline
+{ const u=nearestNode(start.x,start.y); const c=makeCar(0,0,0,'free'); placeOnEdge(c,u,CADJ); c.col=SAVE.col; c.type=SAVE.car; c.l=CAR_TYPES[c.type].L; c.w=CAR_TYPES[c.type].W; // voiture de départ : celle choisie au garage (berline au début)
   const fx=Math.cos(c.a),fy=Math.sin(c.a); c.x=NX[u]+fx*8-fy*2.5; c.y=NY[u]+fy*8+fx*2.5; cars.push(c);
   player.x=c.x+fy*4; player.y=c.y-fx*4; }
 
@@ -488,6 +517,8 @@ addEventListener('keydown',e=>{ if(!started) return; keys[e.code]=true;
   if(e.code==='Escape' && MAPBIG) toggleMap();
   if(e.code==='KeyV' && !e.repeat) toggleCam();
   if(e.code==='KeyI' && !e.repeat) toggleFps();
+  if(e.code==='KeyG' && !e.repeat) toggleShop();
+  if(e.code==='Escape' && PAUSED) toggleShop();
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup',e=>{ keys[e.code]=false; });
 addEventListener('blur',()=>{ for(const k in keys) keys[k]=false; });
@@ -513,6 +544,7 @@ const TJ={id:null,ox:0,oy:0,ax:0,ay:0,m:0}, TB={gas:0,brake:0,hb:0}, JR=50;
   $('bsound').addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); toggleSound(); });
   $('bmap').addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); toggleMap(); });
   $('bcam').addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); toggleCam(); });
+  $('bshop').addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); toggleShop(); });
 }
 // sx = direction (-1..1), mx/my = déplacement à pied (analogique)
 const inp = () => {
@@ -564,7 +596,8 @@ function physStep(c,dt,k){
   const fx=Math.cos(c.a), fy=Math.sin(c.a);
   let fwd=c.vx*fx+c.vy*fy, lat=-c.vx*fy+c.vy*fx;
   let acc=0;
-  if(k){ if(k.up) acc = fwd<-0.5 ? 18 : 11*(1-fwd/34);
+  const PF=(c===player.car&&PERF[c.type])||PERF.berline;  // seule la voiture du joueur profite du type (la police garde ses réglages)
+  if(k){ if(k.up) acc = fwd<-0.5 ? 18 : PF.a*(1-fwd/PF.v);
          if(k.down) acc = fwd>0.5 ? -20 : -7*(1+fwd/9); }
   fwd += acc*dt;
   fwd -= fwd*0.22*dt; fwd -= Math.sign(fwd)*Math.min(Math.abs(fwd),(k&&(k.up||k.down)?0.4:2.2)*dt);
@@ -730,24 +763,66 @@ function updateRoute(){
 function addWanted(n){ player.wanted=Math.min(5,player.wanted+n); player.seen=0; }
 let toastT=0;
 function toast(t,col){ const e=$('toast'); e.textContent=t; e.style.color=col||'#fff'; e.style.opacity=1; toastT=2.2; }
-const mission={stage:'none',from:null,to:null,time:0,wait:1.5};
+// Missions : type 'colis' (ramasser puis livrer), 'taxi' (client à prendre et déposer à l'arrêt, pourboire qui fond aux chocs),
+// 'course' (points de passage contre la montre), 'fuite' (semer la police). stage : none | pickup | drop | evade.
+const mission={stage:'none',type:'colis',from:null,to:null,time:0,wait:1.5,cps:null,tip:0,hintT:0};
 const ZONE_R=12; // rayon de la zone de ramassage / livraison (m), dessinée telle quelle en 2D et en 3D
+const dist2=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+function farPOI(a,dmin){ let b=pick(POI); for(let k=0;k<40&&(b===a||dist2(a,b)<dmin);k++) b=pick(POI); return b; }
 function newMission(){
-  const a=pick(POI); let b=a; for(let k=0;k<30&&(b===a||Math.hypot(a.x-b.x,a.y-b.y)<600);k++) b=pick(POI);
-  mission.from=a; mission.to=b; mission.stage='pickup'; mission.time=0;
+  const r=Math.random(); mission.cps=null; mission.tip=0; mission.time=0; mission.hintT=0;
+  if(SAVE.done<1 || r<0.38){ mission.type='colis'; mission.from=pick(POI); mission.to=farPOI(mission.from,600); mission.stage='pickup'; }
+  else if(r<0.64){ mission.type='taxi'; mission.from=pick(POI); mission.to=farPOI(mission.from,500); mission.stage='pickup'; toast('Un client attend un taxi','#ffcc33'); }
+  else if(r<0.86 || !player.car){ mission.type='course'; const P={x:player.x,y:player.y}; let cur=P; mission.cps=[];
+    for(let i=0;i<3;i++){ const q=farPOI(cur,350); mission.cps.push(q); cur=q; }
+    mission.to=mission.cps.shift(); mission.from=mission.to; mission.stage='drop'; mission.time=Math.round(dist2(P,mission.to)/9+16); toast('Course contre la montre !','#ffcc33'); }
+  else { mission.type='fuite'; mission.stage='evade'; addWanted(3); toast('Semez la police !','#ff6b5b'); }
 }
+function winMission(gain,txt){ player.money+=gain; SAVE.done++; saveGame(); toast(txt+' +'+gain+' €','#7ee08a'); mission.stage='none'; mission.wait=2.5; }
 function updateMission(dt){
   if(mission.stage==='none'){ mission.wait-=dt; if(mission.wait<=0) newMission(); return; }
-  const T = mission.stage==='pickup' ? mission.from : mission.to;
-  if(Math.hypot(player.x-T.x,player.y-T.y)<ZONE_R){
-    if(mission.stage==='pickup'){ mission.stage='drop'; const d=Math.hypot(mission.to.x-mission.from.x,mission.to.y-mission.from.y); mission.time=Math.round(d/6.5+25); toast('Colis récupéré !','#ffcc33'); }
-    else { const gain=100+Math.round(mission.time*6); player.money+=gain; toast('Livré ! +'+gain+' €','#7ee08a'); mission.stage='none'; mission.wait=2; }
+  if(mission.stage==='evade'){ mission.time+=dt; if(player.wanted===0) winMission(300+Math.round(Math.min(60,mission.time)*3),'Police semée !'); return; }
+  const T = mission.stage==='pickup' ? mission.from : mission.to, sp=player.car?Math.hypot(player.car.vx,player.car.vy):0;
+  mission.hintT-=dt;
+  if(dist2(player,T)<ZONE_R){
+    if(mission.type==='colis'){
+      if(mission.stage==='pickup'){ mission.stage='drop'; mission.time=Math.round(dist2(mission.to,mission.from)/6.5+25); toast('Colis récupéré !','#ffcc33'); }
+      else winMission(100+Math.round(mission.time*6),'Livré !');
+    } else if(mission.type==='taxi'){
+      if(!player.car || sp>3){ if(mission.hintT<=0){ mission.hintT=3; toast(player.car?'Arrêtez-vous pour le client':'Il faut une voiture pour le taxi','#ffcc33'); } }
+      else if(mission.stage==='pickup'){ mission.stage='drop'; mission.time=Math.round(dist2(mission.to,mission.from)/6+35); mission.tip=150; toast('Client à bord : conduisez en douceur','#ffcc33'); }
+      else winMission(120+Math.round(dist2(mission.to,mission.from)*0.2)+Math.round(mission.tip),'Client déposé !');
+    } else if(mission.type==='course'){
+      if(mission.cps.length){ const prev=mission.to; mission.to=mission.cps.shift(); mission.from=mission.to; mission.time+=Math.round(dist2(prev,mission.to)/10+6); toast('Point de passage ! Encore '+(mission.cps.length+1),'#ffcc33'); }
+      else winMission(280+Math.round(mission.time*5),'Course gagnée !');
+    }
   }
-  if(mission.stage==='drop'){ mission.time-=dt; if(mission.time<=0){ toast('Trop tard… colis perdu','#ff6b5b'); mission.stage='none'; mission.wait=2.5; } }
+  if(mission.stage==='drop'){ mission.time-=dt; if(mission.time<=0){ toast(mission.type==='taxi'?'Trop lent… le client est parti':mission.type==='course'?'Temps écoulé…':'Trop tard… colis perdu','#ff6b5b'); mission.stage='none'; mission.wait=2.5; } }
 }
+// ---- garage : le jeu est en pause tant qu'il est ouvert
+let PAUSED=false;
+const SHOP_CARS=[['berline','Berline','équilibrée',0],['citadine','Citadine','courte et maniable',400],['suv','SUV','haut et stable',900],['sport','Sportive','bien plus rapide',2500]];
+const SHOP_COLS=['#ffcc33','#c0392b','#2e86c1','#27ae60','#ecf0f1','#1c2833','#8e44ad','#d35400'];
+function applyCar(){ let c=player.car;
+  if(!c){ const f=freeNear(player.x+3,player.y)||{x:player.x,y:player.y}; c=makeCar(f.x,f.y,player.a,'free'); cars.push(c); toast('Votre voiture est livrée à côté de vous','#7ee08a'); }
+  c.type=SAVE.car; c.l=CAR_TYPES[c.type].L; c.w=CAR_TYPES[c.type].W; c.col=SAVE.col; c.police=false; }
+function drawShop(){
+  $('shopmoney').textContent=player.money.toLocaleString('fr-FR')+' €';
+  const pc=PERF; $('shopcars').innerHTML=SHOP_CARS.map(([id,n,d,pr])=>{ const own=SAVE.owned.includes(id), cur=SAVE.car===id;
+    return '<div class="row"><b>'+n+'<small>'+d+' · '+Math.round(pc[id].v*3.6*0.8)+' km/h</small></b><button data-car="'+id+'"'+(cur||(!own&&player.money<pr)?' disabled':'')+'>'+(cur?'Choisie':own?'Choisir':'Acheter '+pr+' €')+'</button></div>'; }).join('');
+  $('shopcols').innerHTML=SHOP_COLS.map(c=>'<button class="sw'+(SAVE.col===c?' cur':'')+'" style="background:'+c+'" data-col="'+c+'"'+(SAVE.col!==c&&player.money<150?' disabled':'')+'></button>').join('');
+  $('shopstat').textContent='Courses réussies : '+SAVE.done+' · Sauvegarde automatique sur cet appareil.';
+}
+function toggleShop(){ if(!started) return; PAUSED=!PAUSED; $('shop').style.display=PAUSED?'flex':'none'; for(const k in keys) keys[k]=false; if(PAUSED) drawShop(); }
+$('shopclose').addEventListener('click',()=>toggleShop());
+$('shop').addEventListener('click',e=>{ const t=e.target; if(!t||!t.dataset) return;
+  if(t.dataset.car){ const it=SHOP_CARS.find(x=>x[0]===t.dataset.car); if(!it) return;
+    if(!SAVE.owned.includes(it[0])){ if(player.money<it[3]) return; player.money-=it[3]; SAVE.owned.push(it[0]); }
+    SAVE.car=it[0]; applyCar(); saveGame(); drawShop(); }
+  else if(t.dataset.col && t.dataset.col!==SAVE.col){ if(player.money<150) return; player.money-=150; SAVE.col=t.dataset.col; applyCar(); saveGame(); drawShop(); } });
 function bust(){
   const loss=Math.round(player.money*0.3); player.money-=loss; player.wanted=0;
-  toast('Interpellé ! −'+loss+' €','#5dade2');
+  toast('Interpellé ! −'+loss+' €','#5dade2'); saveGame();
   if(player.car){ player.car.mode='free'; player.car.vx=player.car.vy=0; player.car=null; }
   const s=pick(POI), f=freeNear(s.x+5,s.y+5)||s; player.x=f.x; player.y=f.y; // jamais dans un bâtiment
   for(const c of cars) if(c.police) c.gone=true;
@@ -773,7 +848,8 @@ function initAudio(){
   for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2.2); SND.noise=nb;
   document.addEventListener('visibilitychange',()=>{ if(!AC) return; if(document.hidden) AC.suspend(); else AC.resume(); });
 }
-function crash(k){ if(!AC||!SND.on||SND.cd>0) return; SND.cd=0.3;
+function crash(k){ if(mission.type==='taxi'&&mission.stage==='drop') mission.tip=Math.max(0,mission.tip-12-45*k);
+  if(!AC||!SND.on||SND.cd>0) return; SND.cd=0.3;
   const s=AC.createBufferSource(); s.buffer=SND.noise; const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=700+900*k;
   const g=AC.createGain(); g.gain.value=0.25+0.5*k; s.connect(f); f.connect(g); g.connect(SND.master); s.start(); }
 function horn(on){ if(!AC) return;
@@ -1158,8 +1234,10 @@ function updateHud(){
   let s=''; for(let i=0;i<5;i++) s+= i<player.wanted ? '★' : '<span class="off">★</span>'; $('wanted').innerHTML=s;
   const TT=curTarget(), gdd=TT?routeGuide():null, dd=TT?Math.round(Math.max(0,(gdd?gdd.len:Math.hypot(TT.x-player.x,TT.y-player.y))-ZONE_R)):0;
   const dtxt=TT ? (dd<=0 ? ' <span style="color:#7ee08a">— vous y êtes !</span>' : ' — '+dd+' m') : '';
-  if(mission.stage==='pickup') $('mission').innerHTML='Récupérez le colis : <b>'+mission.from.n+'</b>'+dtxt;
-  else if(mission.stage==='drop') $('mission').innerHTML='Livrez le colis : <b>'+mission.to.n+'</b>'+dtxt;
+  const mt=mission.type;
+  if(mission.stage==='evade') $('mission').innerHTML='<b>Semez la police !</b> Éloignez-vous jusqu’à perdre vos étoiles';
+  else if(mission.stage==='pickup') $('mission').innerHTML=(mt==='taxi'?'Taxi — prenez le client : ':'Récupérez le colis : ')+'<b>'+mission.from.n+'</b>'+dtxt;
+  else if(mission.stage==='drop') $('mission').innerHTML=(mt==='taxi'?'Taxi — déposez le client : ':mt==='course'?'Course — point de passage ('+(mission.cps.length+1)+' restants) : ':'Livrez le colis : ')+'<b>'+mission.to.n+'</b>'+dtxt+(mt==='taxi'?'<br>Pourboire : '+Math.round(mission.tip)+' €':'');
   else $('mission').textContent='En attente d’une course…';
   $('timer').textContent = mission.stage==='drop' ? '⏱ '+Math.ceil(mission.time)+' s' : '';
   $('timer').style.color = mission.time<10 ? '#ff6b5b' : '#fff';
@@ -1766,7 +1844,7 @@ async function initReel(){
   const mk=async(url,n)=>{ const out=[]; for(let i=0;i<n;i++){ const m=await Cesium.Model.fromGltfAsync({url,colorBlendMode:Cesium.ColorBlendMode.HIGHLIGHT,show:false,forwardAxis:Cesium.Axis.X,upAxis:Cesium.Axis.Y});
       try{ m.imageBasedLighting.imageBasedLightingFactor=new Cesium.Cartesian2(0.45,0.15); }catch(_){} // l'ambiance par défaut délavait les couleurs
       scene.primitives.add(m); out.push(m); } return out; };
-  const pools={}; for(const t of ['citadine','berline','suv','van','police']){ const big=t!=='van'&&t!=='police'; pools[t]=await mk(vtModelUrl(t),TOUCH?(big?8:4):(big?13:6));
+  const pools={}; for(const t of ['citadine','berline','suv','van','sport','police']){ const big=t==='citadine'||t==='berline'||t==='suv'; pools[t]=await mk(vtModelUrl(t),TOUCH?(big?8:4):(big?13:6));
     for(const m of pools[t]){ try{ m.customShader=new Cesium.CustomShader({uniforms:{u_tint:{type:Cesium.UniformType.VEC3,value:new Cesium.Cartesian3(1,1,1)}},
         fragmentShaderText:`void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material){ vec3 c=fsInput.attributes.color_0.rgb; if(min(c.r,min(c.g,c.b))>0.93) material.diffuse=u_tint; }`}); m._tint=''; }catch(e){ console.warn(e); } } }
   const carsM=Object.values(pools).flat(), pedU=pedModelUrl();
@@ -1915,7 +1993,7 @@ function frame(now){
   { const d=now-last; if(d>0&&d<1000) FPSA.push(d); if(FPSA.length>=45){ const a=FPSA.reduce((x,y)=>x+y,0)/FPSA.length, mx=Math.max(...FPSA); FPSA.length=0;
       if(SHOWFPS) $('fps').textContent=Math.round(1000/a)+' images/s · pire '+Math.round(1000/mx)+' · qualité '+(REEL&&CZ?Math.round(100/(CZ.q||1)):G3?Math.round(100*(G3.q||1)):100)+' %'; } }
   const dt=Math.min(0.05,(now-last)/1000); last=now; blink+=dt;
-  if(started) update(dt);
+  if(started && !PAUSED) update(dt);
   render();
   hudT-=dt; if(hudT<=0){ hudT=0.1; updateHud(); }
   streetT-=dt; if(streetT<=0){ streetT=0.4; updateStreet(); }
