@@ -94,7 +94,7 @@
 <button id="b3d" class="panel" title="Changer de vue : 2D / 3D / Réel (touche C)">Vue : 2D</button>
 <button id="bnight" class="panel" title="Jour / nuit (touche N)">Nuit</button>
 <button id="bsound" class="panel" title="Son (touche M)">Son : oui</button>
-<button id="bcam" class="panel" title="Hauteur de caméra en vue Réel (touche V)">Caméra : aérienne</button>
+<button id="bcam" class="panel" style="display:none" title="Hauteur de caméra en vue Réel (touche V)">Caméra : aérienne</button>
 <div id="help" class="panel">
   <kbd>Z Q S D</kbd> / flèches : bouger<br>
   <kbd>E</kbd> : monter / descendre<br>
@@ -145,7 +145,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261114-224353'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261114-224904'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1516,11 +1516,11 @@ function render3D(){
   const yawT = pc ? pc.a : player.a;
   if(!cam3.init){ cam3.yaw=yawT; cam3.d=pc?8:4; cam3.init=true; }
   cam3.yaw += wrapA(yawT-cam3.yaw)*(pc?0.09:0.035);
-  const portrait=H>W, dist=(pc?7.2+sp*0.09:4.0)*(portrait?1.35:1), hgt=(pc?3.0+sp*0.035:2.0)*(portrait?1.2:1), fx=Math.cos(cam3.yaw), fz=Math.sin(cam3.yaw);
+  const portrait=H>W, dist=(pc?5.3+sp*0.055:3.4)*(portrait?1.35:1), hgt=(pc?1.95+sp*0.012:1.85)*(portrait?1.2:1), fx=Math.cos(cam3.yaw), fz=Math.sin(cam3.yaw);
   let d=dist; for(let s=0.8;s<=dist;s+=0.5){ if(hitsBuilding(px-fx*s,pz-fz*s)){ d=Math.max(0.8,s-0.7); break; } }
   cam3.d += (d-cam3.d)*(d<cam3.d?0.5:0.06);
   const sh=shake*0.5, eye=[px-fx*cam3.d+(Math.random()-.5)*sh, hgt+(dist-cam3.d)*0.45+(Math.random()-.5)*sh, pz-fz*cam3.d];
-  let ctr=[px+fx*4, pc?1.1:1.3, pz+fz*4];
+  let ctr=[px+fx*(pc?8:4), pc?1.25:1.4, pz+fz*(pc?8:4)];
   if(window.__cam3){ eye.splice(0,3,...window.__cam3.eye); ctr=window.__cam3.ctr; } // débogage : caméra imposée
   const W3=cv.width, H3=cv.height, far=TOUCH?420:620, fog=TOUCH?[110,400]:[150,580];
   const SK=NIGHT?SKYN:SKY3;
@@ -1578,7 +1578,7 @@ function render3D(){
   // flèche de guidage flottante au-dessus du joueur (vise la prochaine rue à prendre)
   const T=curTarget();
   if(T && Math.hypot(T.x-px,T.y-pz)>ZONE_R*0.8){ const close=Math.hypot(T.x-px,T.y-pz)<60, gd=close?null:routeGuide(), gx=gd?gd.x:T.x, gz=gd?gd.y:T.y, an=Math.atan2(gz-pz,gx-px),
-    ax=Math.cos(an), az=Math.sin(an), rx=-az, rz=ax, y=(pc?2.6:2.15)+Math.sin(blink*3)*0.08, k=pc?0.72:0.32, c=col3(mission.stage==='pickup'?'#ffcc33':'#7ee08a');
+    ax=Math.cos(an), az=Math.sin(an), rx=-az, rz=ax, y=(pc?2.35:2.15)+Math.sin(blink*3)*0.06, k=pc?0.42:0.3, c=col3(mission.stage==='pickup'?'#ffcc33':'#7ee08a');
     // flèche inclinée à 50° vers la caméra : à plat, elle serait vue par la tranche
     const ct=Math.cos(0.87), st=Math.sin(0.87), P=(s,t)=>[px+ax*s*k*ct+rx*t*k, y+s*k*st, pz+az*s*k*ct+rz*t*k];
     const tip=P(1.5,0), l=P(-0.8,-1), n=P(-0.25,0), r=P(-0.8,1);
@@ -1632,6 +1632,9 @@ function groundH(x,y,ask){
     if(v!==undefined){ s+=v*ww; w+=ww; } else if(ask) HREQ.add(hkey(i+di,j+dj)); }
   return w>0.01 ? s/w : HPLAYER;
 }
+// hauteur du maillage chargé à la verticale d'un point : calcul sur les triangles, SANS passe de rendu
+// (≈ 3–4 ms, contre 17–45 ms pour pickFromRay qui refait un rendu de « picking » à chaque rayon)
+function czHeight(x,y){ if(!CZ.ts.getHeight) return czRayDown(x,y,HPLAYER+3); const l=llOf(x,y), h=CZ.ts.getHeight(Cesium.Cartographic.fromDegrees(l[0],l[1]),CZ.scene); return h===undefined?null:h; }
 function czRayDown(x,y,hFrom){ const o=czPos(x,y,hFrom), d=Cesium.Cartesian3.negate(Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(o,new Cesium.Cartesian3()),new Cesium.Cartesian3());
   const h=CZ.scene.pickFromRay(new Cesium.Ray(o,d),CZ.excl); if(!h||!h.position) return null;
   const c=Cesium.Cartographic.fromCartesian(h.position); return c ? c.height : null; }
@@ -1727,17 +1730,20 @@ function renderReel(){
   const sc=CZ.scene, pc=player.car, px=player.x, py=player.y, sp=pc?Math.hypot(pc.vx,pc.vy):0;
   // --- hauteur du sol : sous le joueur (souvent) + cellules demandées (4 rayons par image au plus)
   // chaque rayon = une passe de rendu de « picking » : au plus UN rayon par image (sinon ~80 ms/image)
-  CZ.hT=(CZ.hT||0)+1; const rayOk=CZ.hT%2===0, doPlayer=CZ.hT%8===0; // un rayon une image sur deux
-  if(doPlayer){ const h=czRayDown(px,py,HPLAYER+3); if(h!==null && Math.abs(h-HPLAYER)<6) HPLAYER+= (h-HPLAYER)*0.5;
+  CZ.hT=(CZ.hT||0)+1; CZ.rej=CZ.rej||0;
+  if(CZ.hT%6===0){ const h=czHeight(px,py);            // sol sous le joueur ; un toit ou un feuillage (bien plus haut) est rejeté
+    if(h!==null && h<HPLAYER+2.5){ HPLAYER+=(h-HPLAYER)*0.5; CZ.rej=0; }
+    else if(h!==null && ++CZ.rej>40){ let mn=h; for(const [dx,dy] of [[6,0],[-6,0],[0,6],[0,-6]]){ const q=czHeight(px+dx,py+dy); if(q!==null&&q<mn) mn=q; } HPLAYER=mn; CZ.rej=0; }
     HGRID.set(hkey(Math.round(px/HCELL),Math.round(py/HCELL)),HPLAYER); }
-  let k=(doPlayer||!rayOk)?1:0; for(const key of HREQ){ if(k>=1) break; HREQ.delete(key); if(HGRID.has(key)) continue; const i=Math.floor(key/100000)-5000, j=key%100000-5000;
-    const x=i*HCELL, y=j*HCELL; if(Math.hypot(x-px,y-py)>260) continue; const h=czRayDown(x,y,groundH(x,y,false)+3); if(h!==null && Math.abs(h-HPLAYER)<25) HGRID.set(key,h); k++; }
+  else if(CZ.hT%3===1){ if(HREQ.size>400) HREQ.clear();   // une cellule de la grille toutes les 3 images
+    for(const key of HREQ){ HREQ.delete(key); if(HGRID.has(key)) continue; const i=Math.floor(key/100000)-5000, j=key%100000-5000, x=i*HCELL, y=j*HCELL, dd=Math.hypot(x-px,y-py);
+      if(dd>200) continue; const h=czHeight(x,y); HGRID.set(key,(h!==null && Math.abs(h-HPLAYER)<2.5+dd*0.08) ? h : HPLAYER); break; } }
   // --- caméra (même logique que la vue 3D : derrière le joueur, rapprochée par les bâtiments OSM)
   const yawT=pc?pc.a:player.a; if(!cam3.init){ cam3.yaw=yawT; cam3.d=pc?8:4; cam3.init=true; }
   cam3.yaw+=wrapA(yawT-cam3.yaw)*(pc?0.09:0.035);
   const portrait=H>W, fx=Math.cos(cam3.yaw), fy=Math.sin(cam3.yaw);
   // 3 hauteurs de caméra : 0 proche (au ras du sol, photos floues), 1 haute, 2 aérienne (le photomaillage y est le plus réaliste)
-  let dist=(pc?7.2+sp*0.09:4.0)*(portrait?1.35:1), hgt=(pc?3.0+sp*0.035:2.0)*(portrait?1.2:1);
+  let dist=(pc?5.3+sp*0.055:3.4)*(portrait?1.35:1), hgt=(pc?1.95+sp*0.012:1.85)*(portrait?1.2:1);
   CZ.ts.maximumScreenSpaceError = TOUCH ? [9,12,16][CAMLV] : [3.5,6,10][CAMLV]; // de haut, inutile de charger le détail le plus fin
   if(CAMLV){ dist=[0,26,42][CAMLV]*(portrait?1.2:1)+sp*0.25; hgt=[0,22,68][CAMLV]*(portrait?1.2:1); }
   let d=dist; if(!CAMLV) for(let s=0.8;s<=dist;s+=0.5){ if(hitsBuilding(px-fx*s,py-fy*s)){ d=Math.max(0.8,s-0.7); break; } }
@@ -1816,10 +1822,11 @@ function setView(v){
   }
   VIEW=v; MODE3D=v!=='2d'; REEL=v==='reel'; cam3.init=false;
   $('g3').style.display=MODE3D&&!REEL?'block':'none'; $('cz').style.display=REEL?'block':'none';
+  $('bcam').style.display=REEL?'':'none'; // la hauteur de caméra ne concerne que la vue Réel
   $('b3d').textContent='Vue : '+VIEW_NAME[VIEW_WANT]+(VIEW_WANT!==VIEW?'…':'');
-  try{ localStorage.setItem('lx_vue2',VIEW_WANT); }catch(_){}
+  try{ localStorage.setItem('lx_vue3',VIEW_WANT); }catch(_){}
 }
-function toggle3D(){ const order=CZFAIL?['2d','3d']:['2d','3d','reel']; setView(order[(order.indexOf(VIEW_WANT)+1)%order.length]); }
+function toggle3D(){ const order=CZFAIL?['3d','2d']:['3d','reel','2d']; setView(order[(order.indexOf(VIEW_WANT)+1)%order.length]); }
 
 
 function frame(now){
@@ -1834,8 +1841,8 @@ for(let i=0;i<40;i++) spawnTraffic(40,480);
 for(let i=0;i<80;i++) spawnPed(10,320);
 $('play').onclick=()=>{ $('start').style.display='none'; started=true; initAudio(); $('bcam').textContent='Caméra : '+CAM_NAME[CAMLV];
   // vue 3D par défaut ; la 2D seulement si le joueur l'a choisie (clé 'lx_vue' ; l'ancienne clé 'lx3d' est ignorée)
-  let vue=null; try{ vue=localStorage.getItem('lx_vue2'); if(localStorage.getItem('lx_nuit')==='1' && !NIGHT) toggleNight(); }catch(_){}
-  setView(vue==='2d'||vue==='3d'||vue==='reel' ? vue : 'reel');
+  let vue=null; try{ vue=localStorage.getItem('lx_vue3'); if(localStorage.getItem('lx_nuit')==='1' && !NIGHT) toggleNight(); }catch(_){}
+  setView(vue==='2d'||vue==='3d'||vue==='reel' ? vue : '3d'); // départ en 3D : c'est la vue de conduite attendue par l'utilisateur
   if(TOUCH){ try{ const r=document.documentElement.requestFullscreen; if(r) r.call(document.documentElement).catch(()=>{}); }catch(_){} } toast('Bienvenue à Lyon !','#ffcc33');
   setTimeout(()=>{ $('help').style.display='none'; },25000); // l'aide pouvait masquer la flèche de guidage
 };
