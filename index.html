@@ -177,7 +177,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261115-002920'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261115-003236'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1335,10 +1335,10 @@ function texFromRGBA(gl,N,data,repeat){ const t=gl.createTexture(); gl.bindTextu
 //  6 rez-de-chaussée simple (fenêtre + soubassement)            7 mur aveugle
 const FROWS=8;
 function makeFacadeTex(gl){
-  const N=256, H=N*FROWS, cv=document.createElement('canvas'); cv.width=N; cv.height=H; const g=cv.getContext('2d');
-  const m=document.createElement('canvas'); m.width=N; m.height=H; const k=m.getContext('2d');
+  const N=256, H=N*FROWS, PX=(!TOUCH&&gl.getParameter(gl.MAX_TEXTURE_SIZE)>=4096)?2:1, cv=document.createElement('canvas'); cv.width=N*PX; cv.height=H*PX; const g=cv.getContext('2d');
+  const m=document.createElement('canvas'); m.width=N*PX; m.height=H*PX; const k=m.getContext('2d'); g.scale(PX,PX); k.scale(PX,PX);
   g.fillStyle='#fff'; g.fillRect(0,0,N,H); k.fillStyle='#fff'; k.fillRect(0,0,N,H);
-  for(let i=0;i<9000;i++){ const v=226+Math.random()*29|0; g.fillStyle='rgb('+v+','+v+','+v+')'; g.fillRect(Math.random()*N,Math.random()*H,2,2); } // grain d'enduit
+  for(let i=0;i<9000*PX*PX;i++){ const v=228+Math.random()*27|0; g.fillStyle='rgb('+v+','+v+','+v+')'; g.fillRect(Math.random()*N,Math.random()*H,2/PX,2/PX); } // grain d'enduit
   const own=(x,y,w,h)=>{ k.fillStyle='#000'; k.fillRect(x,y,w,h); };       // zone à couleur propre (non teintée par le mur)
   const glass=(x,y,w,h)=>{ const gr=g.createLinearGradient(0,y,0,y+h); gr.addColorStop(0,'#4d6074'); gr.addColorStop(0.45,'#2f3b47'); gr.addColorStop(1,'#27323c'); g.fillStyle=gr; g.fillRect(x,y,w,h); };
   const band=(o)=>{ g.fillStyle='#d9d9d9'; g.fillRect(0,o+238,N,8); g.fillStyle='#c4c4c4'; g.fillRect(0,o+246,N,2); };  // bandeau d'étage
@@ -1379,12 +1379,27 @@ function makeFacadeTex(gl){
   g.fillStyle='#ece6da'; g.fillRect(84,o+60,88,130); glass(92,o+68,72,114); g.fillStyle='#2b2b2b'; for(let x=96;x<164;x+=10) g.fillRect(x,o+68,3,114); // barreaux
   g.fillStyle='#8f897f'; g.fillRect(0,o+222,N,34);                                                         // soubassement
   // 7 — mur aveugle : rien
-  const d=g.getImageData(0,0,N,H).data, md=k.getImageData(0,0,N,H).data, out=new Uint8Array(N*H*4);
+  // ---- finitions : relief simulé par des ombres (embrasure en haut et à gauche des vitres, appuis de fenêtre, dessous des
+  // bandeaux et des balcons, coulures sous les appuis) et refends du rez-de-chaussée. Du noir translucide sur l'enduit assombrit la teinte du mur.
+  const sh=(x,y,w,h,a,vert)=>{ const gr=vert?g.createLinearGradient(0,y,0,y+h):g.createLinearGradient(x,0,x+w,0); gr.addColorStop(0,'rgba(0,0,0,'+a+')'); gr.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=gr; g.fillRect(x,y,w,h); };
+  const recess=(x,y,w,h)=>{ sh(x,y,w,13,0.5,true); sh(x,y,7,h,0.34,false); };
+  const sill=(x,y,w)=>{ own(x-6,y,w+12,5); g.fillStyle='#f4f0e8'; g.fillRect(x-6,y,w+12,5); sh(x-6,y+5,w+12,9,0.3,true); sh(x+w*0.25,y+12,w*0.5,22,0.06,true); };
+  for(const r of [0,1,2,6,7]) sh(0,r*N,N,10,0.22,true);                                   // ombre sous le bandeau de l'étage du dessus
+  o=0; recess(84,o+46,88,114); sh(62,o+203,132,13,0.32,true); sh(74,o+38,108,6,0.25,true); own(119,o+22,18,16); g.fillStyle='#e9e3d6'; g.fillRect(119,o+22,18,16); g.fillStyle='rgba(0,0,0,.18)'; g.fillRect(119,o+36,18,2); // clé de linteau, ombre du balcon
+  sh(216,o+44,5,152,0.2,false); sh(74,o+44,4,152,0.25,false);                             // ombre des persiennes
+  o=N; recess(86,o+66,84,120); sh(70,o+202,116,9,0.3,true); sh(100,o+210,56,28,0.06,true);
+  o=2*N; recess(94,o+42,68,172); sill(88,o+220,80);
+  o=3*N; sh(0,o+70,N,12,0.42,true); g.fillStyle='rgba(0,0,0,.10)'; g.fillRect(0,o+60,N,2); g.fillRect(0,o+198,N,2);
+  o=4*N; sh(18,o+76,220,18,0.45,true); g.fillStyle='rgba(255,255,255,.07)'; g.beginPath(); g.moveTo(60,o+80); g.lineTo(96,o+80); g.lineTo(46,o+240); g.lineTo(26,o+240); g.lineTo(26,o+190); g.closePath(); g.fill(); // reflet de vitrine
+  o=6*N; recess(92,o+68,72,114); sill(84,o+190,88);
+  for(let y=30;y<220;y+=32){ g.fillStyle='rgba(0,0,0,.13)'; g.fillRect(0,o+y,84,2); g.fillRect(172,o+y,84,2); g.fillStyle='rgba(255,255,255,.5)'; g.fillRect(0,o+y+2,84,1); g.fillRect(172,o+y+2,84,1); } // refends
+  const d=g.getImageData(0,0,N*PX,H*PX).data, md=k.getImageData(0,0,N*PX,H*PX).data, out=new Uint8Array(N*PX*H*PX*4);
   for(let i=0;i<out.length;i+=4){ out[i]=d[i]; out[i+1]=d[i+1]; out[i+2]=d[i+2]; out[i+3]=md[i]; }
   const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,N,H,0,gl.RGBA,gl.UNSIGNED_BYTE,out);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,N*PX,H*PX,0,gl.RGBA,gl.UNSIGNED_BYTE,out);
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
   gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  { const ax=gl.getExtension('EXT_texture_filter_anisotropic'); if(ax) gl.texParameterf(gl.TEXTURE_2D,ax.TEXTURE_MAX_ANISOTROPY_EXT,Math.min(TOUCH?4:8,gl.getParameter(ax.MAX_TEXTURE_MAX_ANISOTROPY_EXT))); } /* façades nettes même vues en enfilade */
   return t;
 }
 // style d'un bâtiment : rangée d'étage, rangée de rez-de-chaussée (-1 = aucune), couleur d'enduit, corniche
@@ -1446,7 +1461,10 @@ void main(){ vec3 col=vc; float vd=distance(vp,E); bool glass=false;
   if(vt.x>-999.0){ vec2 uv=vt;
     if(vt.y>=48.0){ float rr=floor(vt.y/64.0); uv=vec2(vt.x,(rr-1.0+clamp(fract(vt.y),0.004,0.996))/8.0); } // façade : rangée rr-1 de l'atlas
     vec4 tx=texture2D(S,uv); col=mix(tx.rgb, tx.rgb*vc, tx.a);
-    glass = tx.a<0.5 && tx.b-tx.r>0.05 && tx.g<0.45; }
+    glass = tx.a<0.5 && tx.b-tx.r>0.05 && tx.g<0.45;
+    if(glass && vt.y>=48.0 && NIGHT<0.5){ float hw=fract(sin(dot(floor(vt),vec2(12.9898,78.233))+floor((vp.x-vp.z)*0.07)*5.3)*43758.5453);
+      col=mix(col,vec3(0.6,0.73,0.86),(0.08+0.3*hw)*(1.0-smoothstep(0.1,0.75,fract(vt.y))));
+      if(hw>0.8) col=mix(col,vec3(0.86,0.84,0.78),0.5); } }
   if(NIGHT>0.5 && vt.x>-1500.0){
     float L=AMB;
     for(int i=0;i<6;i++){ vec4 c=CL[i]; if(c.z==0.0 && c.w==0.0) continue;
