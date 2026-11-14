@@ -68,6 +68,8 @@
   body.touch #speed{top:300px;bottom:auto;right:10px;font-size:18px;padding:5px 10px}
   body.touch #street{left:calc(10px + env(safe-area-inset-left));bottom:calc(20px + env(safe-area-inset-bottom));transform:none;font-size:12px;padding:4px 10px;max-width:42vw;overflow:hidden;text-overflow:ellipsis}
   body.touch #credit{left:calc(10px + env(safe-area-inset-left));bottom:calc(3px + env(safe-area-inset-bottom));font-size:9px}
+  /* tablette (tactile, grand écran) : la vitesse passe sous la colonne de boutons, qui descend jusqu'à ~385 px */
+  @media (min-width:701px) and (min-height:501px){ body.touch #speed{top:396px} }
   @media (max-width:700px),(max-height:500px){
     #hud{min-width:0;top:calc(8px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));padding:6px 10px}
     #money{font-size:19px} #wanted{font-size:16px;min-height:19px;letter-spacing:2px}
@@ -151,7 +153,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261114-230408'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261114-231143'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -161,12 +163,12 @@ try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json(
 // ============================================================ utilitaires
 const $ = id => document.getElementById(id);
 const cv = $('c'), ctx = cv.getContext('2d');
-let W = 0, H = 0, DPR = 1, VSC = 1, D3 = 1;
+let W = 0, H = 0, DPR = 1, VSC = 1, D3 = 1, RS3 = 1; // RS3 : échelle de résolution de la vue 3D (qualité adaptative)
 let TOUCH = matchMedia('(pointer:coarse)').matches;
 if(TOUCH) document.body.classList.add('touch');
 function resize(){ DPR = Math.min(TOUCH?1.5:2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
   VSC = clamp(Math.min(W,H)/650, 0.62, 1); // petit écran : on dézoome
-  const g3=$('g3'); D3 = TOUCH ? 1 : Math.min(DPR,1.5); g3.width=Math.round(W*D3); g3.height=Math.round(H*D3); g3.style.width=W+'px'; g3.style.height=H+'px';
+  const g3=$('g3'); D3 = TOUCH ? 1 : Math.min(DPR,1.5); g3.width=Math.round(W*D3*RS3); g3.height=Math.round(H*D3*RS3); g3.style.width=W+'px'; g3.style.height=H+'px';
   cv.width = W*DPR; cv.height = H*DPR; cv.style.width = W+'px'; cv.style.height = H+'px'; }
 addEventListener('resize', resize);
 const rnd = (a,b) => a + Math.random()*(b-a);
@@ -1556,7 +1558,13 @@ function render3D(){
   const sh=shake*0.5, eye=[px-fx*cam3.d+(Math.random()-.5)*sh, hgt+(dist-cam3.d)*0.45+(Math.random()-.5)*sh, pz-fz*cam3.d];
   let ctr=[px+fx*(pc?8:4), pc?1.25:1.4, pz+fz*(pc?8:4)];
   if(window.__cam3){ eye.splice(0,3,...window.__cam3.eye); ctr=window.__cam3.ctr; } // débogage : caméra imposée
-  const W3=cv.width, H3=cv.height, far=TOUCH?420:620, fog=TOUCH?[110,400]:[150,580];
+  // qualité adaptative (comme en vue Réel) : si le temps entre deux images dépasse 36 ms, on réduit la distance
+  // d'affichage (Q3 : 1 -> 0,45) puis la résolution ; on remonte doucement quand la machine suit (< 20 ms)
+  { const now=performance.now(), dtf=now-(G3.lastT||now); G3.lastT=now; G3.ft=G3.ft||[]; G3.q=G3.q||1; if(dtf>0&&dtf<250) G3.ft.push(dtf);
+    if(G3.ft.length>=30){ const avg=G3.ft.reduce((a,b)=>a+b,0)/G3.ft.length; G3.ft.length=0;
+      if(avg>36) G3.q=Math.max(0.45,G3.q*0.85); else if(avg<20) G3.q=Math.min(1,G3.q*1.04);
+      const rs=G3.q<0.6?0.7:G3.q<0.8?0.85:1; if(rs!==RS3){ RS3=rs; resize(); } } }
+  const Q3=G3.q, W3=cv.width, H3=cv.height, far=Math.max(190,(TOUCH?420:620)*Q3), fog=[far*0.25,far*0.93];
   const SK=NIGHT?SKYN:SKY3;
   gl.viewport(0,0,W3,H3); gl.clearColor(SK[0],SK[1],SK[2],1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT|gl.STENCIL_BUFFER_BIT);
   gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.disable(gl.BLEND); gl.depthMask(true);
@@ -1581,13 +1589,19 @@ function render3D(){
     gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
     gl.bindBuffer(gl.ARRAY_BUFFER,G3.tr); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(Sd),gl.DYNAMIC_DRAW); drawBuf3(G3.tr,Sd.length/8);
     gl.enable(gl.DEPTH_TEST); gl.depthMask(true); }
+  const HF3=Math.atan(Math.tan(((pc?62:58)*(portrait?1.25:1)*Math.PI/180+0.15)/2)*W3/H3)+0.15; // demi-angle de vue horizontal + marge
+  // objets mobiles : seulement ceux qui sont assez près ET dans le champ (les proches sont toujours gardés)
+  const vis3=(x,z,R)=>{ const dx=x-eye[0], dz=z-eye[2], d2=dx*dx+dz*dz; if(d2>R*R) return false; if(d2<625) return true; return dx*fx+dz*fz > Math.cos(HF3+0.1)*Math.sqrt(d2); };
   // sol
   gl.bindTexture(gl.TEXTURE_2D,G3.ground); drawBuf3(G3.groundBuf.b,G3.groundBuf.n);
   // tuiles
   gl.bindTexture(gl.TEXTURE_2D,G3.facade);
   const vis=[];
   for(const c of G3.chunks){ const dx=c.cx-eye[0], dz=c.cz-eye[2], dd=Math.hypot(dx,dz);
-    if(dd>far+150) continue; if(dd>220 && dx*fx+dz*fz < -150) continue; drawBuf3(c.b,c.n); vis.push(c); }
+    if(dd>far+150) continue; if(dd>220 && dx*fx+dz*fz < -150) continue;
+    // hors du cône de vue horizontal (demi-angle HF3) en tenant compte du rayon de la tuile (≈ 150 m)
+    if(dd>200 && Math.acos(clamp((dx*fx+dz*fz)/dd,-1,1))-Math.asin(Math.min(1,150/dd))>HF3) continue;
+    drawBuf3(c.b,c.n); vis.push(c); }
   // ombres : polygones noirs translucides au ras du sol ; le stencil (EQUAL 0 puis INCR) n'assombrit
   // chaque pixel qu'une fois même là où les ombres se chevauchent. Ombres des voitures ajoutées ici aussi.
   if(!NIGHT){ const SD=[], K0=[0,0,0];
@@ -1600,11 +1614,11 @@ function render3D(){
     gl.disable(gl.STENCIL_TEST); gl.disable(gl.BLEND); gl.depthMask(true); gl.uniform1f(L.A,1); }
   // objets mobiles
   const D=[], R=260, near=(x,z)=>Math.abs(x-px)<R&&Math.abs(z-pz)<R;
-  for(const c of cars) if(Math.abs(c.x-px)<170&&Math.abs(c.y-pz)<170) carMesh3(D,c);
-  for(const p of peds) if(near(p.x,p.y)) pedBox3(D,p,col3(p.col),col3(p.skin));
+  for(const c of cars){ if(!vis3(c.x,c.y,160*Q3)) continue; ((c.x-px)**2+(c.y-pz)**2<75*75) ? carMesh3(D,c) : carBox3(D,c); } // au loin : voiture simplifiée
+  for(const p of peds) if(vis3(p.x,p.y,85)) pedBox3(D,p,col3(p.col),col3(p.skin));
   if(!pc) pedBox3(D,{x:px,y:pz,a:player.a,state:'walk',ph:player.ph},col3('#ffcc33'),col3('#e0b48e'));
   const pole=col3('#30343a'), head=col3('#1d2026');
-  for(const G of SIGS){ if(!near(G.cx,G.cy)) continue;
+  for(const G of SIGS){ if(!vis3(G.cx,G.cy,150)) continue;
     for(const a of G.app){ const sd=stopDist(a.v); if(a.l<sd+1) continue; const st=sigState(G,a.g), o=a.ew/2+0.9,
       x=NX[a.v]-a.fx*sd-a.fy*o, z=NY[a.v]-a.fy*sd+a.fx*o, ang=Math.atan2(-a.fy,-a.fx);
       box3(D,x,z,ang,0,0,0.08,0.08,0,3.1,pole); box3(D,x,z,ang,0,0,0.18,0.2,3.0,4.0,head);
