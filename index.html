@@ -177,7 +177,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261115-003236'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261115-003827'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -577,6 +577,8 @@ function toggleCar(){
   }
   let best=null,bd=4.5;
   for(const c of cars){ const d=Math.hypot(c.x-player.x,c.y-player.y); if(d<bd){bd=d;best=c;} }
+  if(VIEW!=='reel'){ let pk=null; for(const P of gridQuery(PKG,player.x-5,player.y-5,player.x+5,player.y+5,[])){ if(P.dead) continue; const d=Math.hypot(P.x-player.x,P.y-player.y); if(d<bd){bd=d;pk=P;} }
+    if(pk){ /* voiture garée : elle devient une vraie voiture au moment où on la prend */ const T=CAR_TYPES[pk.type]; best=makeCar(pk.x,pk.y,pk.a,'free'); best.type=pk.type; best.col=pk.col; best.l=T.L; best.w=T.W; pk.dead=true; cars.push(best); } }
   if(!best) return;
   if(best.mode==='ai'){ // le conducteur descend
     const p={x:best.x,y:best.y,a:0,u:best.u,v:best.v,t:best.t,ew:best.ew,side:1,spd:2.6,state:'walk',timer:0,vx:0,vy:0,col:'#555',skin:'#d9a37a'};
@@ -593,7 +595,27 @@ function hitsBuilding(x,y){ for(const b of gridQuery(BG,x,y,x,y,[])) if(x>=b.x0&
 function freeNear(x,y){ if(!hitsBuilding(x,y)) return {x,y};
   for(let r=1;r<=40;r+=1) for(let k=0;k<16;k++){ const a=k*Math.PI/8, px=x+Math.cos(a)*r, py=y+Math.sin(a)*r; if(!hitsBuilding(px,py)) return {x:px,y:py}; }
   return null; }
+// ---- voitures garées : décor fixe le long des rues, à cheval sur la bordure du trottoir (tirage reproductible).
+// Ce ne sont pas des entités : pas de physique ni d'IA, seulement un dessin (3D et 2D) et un obstacle pour les voitures.
+// Pas affichées ni solides en vue Photo aérienne (le photomaillage contient déjà ses propres voitures).
+const PARKED=[], PKG=new Map();
+{ let sd=20261115; const rr=()=>{ sd=(sd*1664525+1013904223)>>>0; return sd/4294967296; }, TY=['citadine','berline','suv','berline','citadine','van','berline'];
+  for(const r of ROADS){ if(r.t==='pedestrian'||r.t==='service'||r.b||!(r.w>=7)) continue; const p=r.p;
+    for(let i=0;i+3<p.length;i+=2){ const ex=p[i+2]-p[i], ey=p[i+3]-p[i+1], l=Math.hypot(ex,ey); if(l<26) continue; const fx=ex/l, fy=ey/l;
+      for(const sn of [1,-1]){ if(rr()<0.4) continue;
+        for(let t=11;t<l-11;t+=6.8+rr()*1.6){ if(rr()<0.3) continue; const type=TY[rr()*TY.length|0], T=CAR_TYPES[type], o=r.w/2+0.15, x=p[i]+fx*t-fy*o*sn, y=p[i+1]+fy*t+fx*o*sn, cl=CAR_COLS[rr()*CAR_COLS.length|0];
+          if(onRoad(x,y,r,1.2)||hitsBuilding(x-fy*1.2*sn,y+fx*1.2*sn)||hitsBuilding(x+fx*2.4-fy*sn,y+fy*2.4+fx*sn)||hitsBuilding(x-fx*2.4-fy*sn,y-fy*2.4+fx*sn)) continue;
+          if(POI.some(q=>(q.x-x)**2+(q.y-y)**2<18*18)) continue;
+          if(gridQuery(TG,x-3,y-3,x+3,y+3,[]).some(q=>(q.x-x)**2+(q.y-y)**2<5.5)||gridQuery(LG,x-3,y-3,x+3,y+3,[]).some(q=>(q.x-x)**2+(q.y-y)**2<6.5)) continue;
+          const P={x,y,a:Math.atan2(fy,fx)+((sn<0&&!r.o)?Math.PI:0),type,col:type==='van'?'#ecf0f1':cl,l:T.L,w:T.W,off:true,police:false,dead:false,x0:x-2.7,x1:x+2.7,y0:y-2.7,y1:y+2.7}; PARKED.push(P); gridAdd(PKG,P); } } } } }
+// voiture garée touchée par un des points de contrôle de la voiture c (null si aucune)
+function parkedHit(c){ if(typeof VIEW!=='undefined'&&VIEW==='reel') return null; const pk=gridQuery(PKG,c.x-3,c.y-3,c.x+3,c.y+3,[]); if(!pk.length) return null;
+  const fx=Math.cos(c.a), fy=Math.sin(c.a), hl=c.l/2, hw=c.w/2;
+  for(const P of pk){ if(P.dead) continue; const ca=Math.cos(P.a), sa=Math.sin(P.a);
+    for(const [a,b] of [[hl,hw],[hl,-hw],[-hl,hw],[-hl,-hw],[hl,0],[-hl,0],[0,hw],[0,-hw]]){ const dx=c.x+fx*a-fy*b-P.x, dy=c.y+fy*a+fx*b-P.y; if(Math.abs(dx*ca+dy*sa)<P.l/2&&Math.abs(-dx*sa+dy*ca)<P.w/2) return P; } }
+  return null; }
 function carHits(c){
+  if(parkedHit(c)) return true;
   const fx=Math.cos(c.a), fy=Math.sin(c.a), hl=c.l/2, hw=c.w/2;
   const list=gridQuery(BG,c.x-3,c.y-3,c.x+3,c.y+3,[]), tl=gridQuery(TG,c.x-3,c.y-3,c.x+3,c.y+3,[]); if(!list.length&&!tl.length) return false;
   const pts=[[hl,hw],[hl,-hw],[-hl,hw],[-hl,-hw],[hl,0],[0,hw],[0,-hw]];
@@ -628,7 +650,7 @@ function physStep(c,dt,k){
     const sp=Math.hypot(c.vx,c.vy);
     c.x=ox+c.vx*dt; c.y=oy;
     if(carHits(c)){ c.x=ox; c.y=oy+c.vy*dt;
-      if(carHits(c)){ c.x=ox; c.y=oy; c.a=oa; if(carHits(c)){ /* coincé : on laisse */ } c.vx*=-0.3; c.vy*=-0.3; }
+      if(carHits(c)){ c.x=ox; c.y=oy; c.a=oa; { let P, n=0; while((P=parkedHit(c))&&n++<4) P.dead=true; } c.vx*=-0.3; c.vy*=-0.3; }
       else { c.vx*=-0.25; c.vy*=0.8; } }
     else { c.vy*=-0.25; c.vx*=0.8; }
     if(c===player.car && sp>7){ shake=Math.min(1,sp/25); crash(shake); }
@@ -1183,6 +1205,7 @@ function render(){
     ctx.globalAlpha=1-ph; ctx.lineWidth=0.6; ctx.beginPath(); ctx.arc(T.x,T.y,rr*ph,0,7); ctx.stroke(); ctx.globalAlpha=1;
     ctx.fillStyle=pk?'#ffcc33':'#7ee08a'; ctx.beginPath(); ctx.arc(T.x,T.y,1.6,0,7); ctx.fill(); }
   for(const p of peds) if(p.x>vx0&&p.x<vx1&&p.y>vy0&&p.y<vy1) drawPed(p,false);
+  for(const P of gridQuery(PKG,vx0,vy0,vx1,vy1,[])) if(!P.dead) drawCar(P);
   for(const c of cars) if(c.x>vx0&&c.x<vx1&&c.y>vy0&&c.y<vy1) drawCar(c);
   if(!player.car) drawPed({x:player.x,y:player.y,a:player.a,state:'walk',col:'#ffcc33',skin:'#e0b48e'},true);
   drawSignalHeads(vx0,vy0,vx1,vy1);
@@ -1507,7 +1530,7 @@ function init3D(){
   const CS=200, CH=new Map();
   // NB : la clé de tuile doit rester identique à celle de sat() (ombres)
   const at=(x,z)=>{ const i=Math.floor(x/CS), j=Math.floor(z/CS), k=i*100000+j; let c=CH.get(k); if(!c){ c={a:[],cx:(i+.5)*CS,cz:(j+.5)*CS}; CH.set(k,c); } return c.a; };
-  const C={side:col3('#d8d1c2'),asph:col3('#55585e'),ped:col3('#d7c7a6'),serv:col3('#86888c'),bedge:col3('#3a3d42'),bdeck:col3('#5d6066'),bped:col3('#cdbd9c'),dash:col3('#ece6d2'),para:col3('#a39d92'),stop:col3('#f2f2f2')};
+  const C={side:col3('#d8d1c2'),asph:col3('#55585e'),ped:col3('#d7c7a6'),serv:col3('#86888c'),bedge:col3('#3a3d42'),bdeck:col3('#5d6066'),bped:col3('#cdbd9c'),dash:col3('#ece6d2'),para:col3('#a39d92'),stop:col3('#f2f2f2'),curb:col3('#a9a498'),gut:col3('#3f4247')};
   const seg=(A,x0,z0,x1,z1,w,y,c)=>{ const l=Math.hypot(x1-x0,z1-z0)||1, nx=-(z1-z0)/l*w/2, nz=(x1-x0)/l*w/2;
     quad3(A,[x0+nx,y,z0+nz],[x1+nx,y,z1+nz],[x1-nx,y,z1-nz],[x0-nx,y,z0-nz],c); };
   const disc=(A,x,z,r,y,c)=>{ for(let k=0;k<8;k++){ const a0=k*Math.PI/4, a1=a0+Math.PI/4;
@@ -1517,7 +1540,13 @@ function init3D(){
     for(let i=0;i<p.length;i+=2) disc(at(p[i],p[i+1]),p[i],p[i+1],w/2,y,c); };
   for(const r of ROADS){ const car=r.t!=='pedestrian'&&r.t!=='service', p=r.p;
     if(!r.b){
-      if(car){ layer(r,r.w+3.5,0.04,C.side); layer(r,r.w,0.08,C.asph); }
+      if(car){ layer(r,r.w+3.5,0.04,C.side); layer(r,r.w,0.08,C.asph);
+        for(let i=0;i+3<p.length;i+=2){ const x0=p[i],z0=p[i+1],ex=p[i+2]-x0,ez=p[i+3]-z0,l=Math.hypot(ex,ez); if(l<3) continue; const fx=ex/l,fz=ez/l, n=Math.max(1,Math.round(l/4)), st=l/n, A=at(x0+ex/2,z0+ez/2);
+          for(const sn of [-1,1]){ const o=r.w/2, ox=-fz*sn, oz=fx*sn; let t0=-1;
+            for(let q=0;q<=n;q++){ const free=q<n && !onRoad(x0+fx*(q+0.5)*st+ox*o, z0+fz*(q+0.5)*st+oz*o, r, 0.3);
+              if(free){ if(t0<0) t0=q*st; } else if(t0>=0){ const t1=q*st, ax=x0+fx*t0, az=z0+fz*t0, bx=x0+fx*t1, bz=z0+fz*t1;
+                quad3(A,[ax+ox*(o-0.32),0.086,az+oz*(o-0.32)],[bx+ox*(o-0.32),0.086,bz+oz*(o-0.32)],[bx+ox*(o-0.04),0.086,bz+oz*(o-0.04)],[ax+ox*(o-0.04),0.086,az+oz*(o-0.04)],C.gut);
+                quad3(A,[ax+ox*(o-0.04),0.09,az+oz*(o-0.04)],[bx+ox*(o-0.04),0.09,bz+oz*(o-0.04)],[bx+ox*(o+0.18),0.09,bz+oz*(o+0.18)],[ax+ox*(o+0.18),0.09,az+oz*(o+0.18)],C.curb); t0=-1; } } } } }
       else if(r.t==='pedestrian') layer(r,r.w,0.06,C.ped); else layer(r,r.w,0.07,C.serv);
     } else {
       layer(r,r.w+4,0.10,C.bedge); layer(r,r.w,0.12,r.t==='pedestrian'?C.bped:C.bdeck);
@@ -1669,7 +1698,7 @@ function carMesh3(A,c){
   for(let i=0;i<V.n;i++){ const role=Rr[i], nx=N[i*3], ny=N[i*3+1], nz=N[i*3+2];
     // vitres : reflet du ciel d'autant plus clair que la vitre regarde vers le haut
     const gl=role===1?Math.max(0,nz)*0.75:0, col=role===0?body:role===1?[0.1+0.42*gl,0.14+0.5*gl,0.19+0.58*gl]:role===6?tail:role===8?bA:role===9?bB:RCOL[role];
-    const emi=role===5||(role===6&&(c.brk||NIGHT))||role===8||role===9;
+    const emi=!c.off&&(role===5||(role===6&&(c.brk||NIGHT))||role===8||role===9);
     const u=emi?-2000:NOTEX, shiny=role===0||role===1;
     for(let v=0;v<3;v++){ const o=i*9+v*3, x=P[o], y=P[o+1], z0=P[o+2], z=z0>0.7?z0+y*roll+x*pitch:z0; // la caisse bouge, pas les roues
       const mx=NV[o], my=NV[o+1], mz=NV[o+2], dl=Math.max(0,(fx*mx+rx*my)*SUNL[0]+mz*SUNL[1]+(fz*mx+rz*my)*SUNL[2]), k=emi?1:0.56+0.44*dl, sp=shiny&&!emi&&!NIGHT?dl*dl*dl*dl*dl*dl*0.2:0; /* reflet du soleil sur la carrosserie */
@@ -1759,7 +1788,8 @@ function render3D(){
     gl.disable(gl.STENCIL_TEST); gl.disable(gl.BLEND); gl.depthMask(true); gl.uniform1f(L.A,1); }
   // objets mobiles
   const D=[], R=260, near=(x,z)=>Math.abs(x-px)<R&&Math.abs(z-pz)<R;
-  for(const c of cars){ if(!vis3(c.x,c.y,160*Q3)) continue; ((c.x-px)**2+(c.y-pz)**2<75*75) ? carMesh3(D,c) : carBox3(D,c); } // au loin : voiture simplifiée
+  for(const c of cars){ if(!vis3(c.x,c.y,160*Q3)) continue; ((c.x-px)**2+(c.y-pz)**2<75*75) ? carMesh3(D,c) : carBox3(D,c); }
+  { const RP=90*Q3; for(const P of gridQuery(PKG,px-RP,pz-RP,px+RP,pz+RP,[])){ if(P.dead||!vis3(P.x,P.y,RP)) continue; ((P.x-px)**2+(P.y-pz)**2<30*30) ? carMesh3(D,P) : carBox3(D,P); } } /* voitures garées */ // au loin : voiture simplifiée
   for(const p of peds) if(vis3(p.x,p.y,85)) pedBox3(D,p,col3(p.col),col3(p.skin));
   if(!pc) pedBox3(D,{x:px,y:pz,a:player.a,state:'walk',ph:player.ph},col3('#ffcc33'),col3('#e0b48e'));
   const pole=col3('#30343a'), head=col3('#1d2026');
