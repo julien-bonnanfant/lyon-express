@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1b1d22">
+<title>Lyon Express – Lyon réel</title>
+<!-- Démo « réaliste » : photomaillage 3D 2023 de la Métropole de Lyon (3D Tiles, glTF 1.0) affiché avec CesiumJS.
+     Les tuiles sont chargées à la volée depuis download.data.grandlyon.com (CORS autorisé), rien n'est réhébergé.
+     Collisions et hauteur du sol : rayons lancés sur le maillage photographié lui-même (pickFromRay). -->
+<script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/';</script>
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/Cesium.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/Widgets/widgets.css">
+<style>
+  :root{--panel:rgba(18,20,26,.78);--accent:#ffcc33;--text:#f4f1ea;--muted:#b9b3a6}
+  html,body{margin:0;height:100%;overflow:hidden;background:#1b1d22;color:var(--text);font-family:"Segoe UI",system-ui,sans-serif;
+    touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;overscroll-behavior:none}
+  #v{position:fixed;inset:0}
+  .cesium-viewer-bottom{display:none!important}  /* crédits Cesium remplacés par #credit (le logo reste en bas à droite) */
+  .panel{position:fixed;background:var(--panel);border-radius:10px;padding:8px 12px;backdrop-filter:blur(4px);z-index:5}
+  #hud{top:calc(10px + env(safe-area-inset-top));left:calc(10px + env(safe-area-inset-left));font-size:13px;line-height:1.4;max-width:60vw}
+  #hud b{color:var(--accent)}
+  #speed{right:calc(10px + env(safe-area-inset-right));top:calc(10px + env(safe-area-inset-top));font-size:22px;font-weight:700}
+  #speed small{font-size:12px;color:var(--muted);font-weight:400}
+  #back{right:calc(10px + env(safe-area-inset-right));top:calc(62px + env(safe-area-inset-top));color:var(--accent);text-decoration:none;font-weight:700;font-size:13px}
+  #credit{position:fixed;left:10px;bottom:calc(4px + env(safe-area-inset-bottom));font-size:10px;color:#ffffffcc;z-index:5;text-shadow:0 1px 2px #000}
+  #load{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,11,14,.88);z-index:10;flex-direction:column;gap:12px;text-align:center;padding:20px}
+  #load h1{margin:0;color:var(--accent);font-size:30px}
+  #load p{margin:0;color:var(--muted);max-width:460px;line-height:1.5}
+  #bar{width:240px;height:8px;border-radius:4px;background:#333842;overflow:hidden}
+  #bar div{height:100%;width:0;background:var(--accent);transition:width .3s}
+  #go{font-size:18px;font-weight:700;padding:12px 28px;border:0;border-radius:8px;background:var(--accent);color:#222;display:none}
+  .tb{position:fixed;z-index:6;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(18,20,26,.6);color:#fff;
+      font:700 15px "Segoe UI",system-ui,sans-serif;touch-action:none;-webkit-tap-highlight-color:transparent;display:none;padding:0}
+  .tb.on{background:rgba(255,204,51,.55)}
+  body.touch .tb{display:block}
+  #bL{left:calc(16px + env(safe-area-inset-left));bottom:calc(22px + env(safe-area-inset-bottom));width:78px;height:78px;font-size:26px}
+  #bR{left:calc(108px + env(safe-area-inset-left));bottom:calc(22px + env(safe-area-inset-bottom));width:78px;height:78px;font-size:26px}
+  #bG{right:calc(16px + env(safe-area-inset-right));bottom:calc(22px + env(safe-area-inset-bottom));width:88px;height:88px}
+  #bB{right:calc(116px + env(safe-area-inset-right));bottom:calc(18px + env(safe-area-inset-bottom));width:72px;height:72px}
+  #keys{right:10px;bottom:24px;font-size:12px;color:var(--muted);line-height:1.6}
+  body.touch #keys{display:none}
+</style>
+</head>
+<body>
+<div id="v"></div>
+<div id="hud" class="panel"><b>Lyon réel</b> — démo photoréaliste<br><span id="info">Rue de la Barre → place Bellecour</span></div>
+<div id="speed" class="panel">0 <small>km/h</small></div>
+<a id="back" class="panel" href="./">← Jeu</a>
+<div id="keys" class="panel">Z Q S D / flèches : conduire<br>Espace : frein</div>
+<div id="credit">Photomaillage 3D 2023 : Métropole de Lyon (Licence Ouverte) · Rendu : CesiumJS</div>
+<button id="bL" class="tb">◀</button><button id="bR" class="tb">▶</button>
+<button id="bB" class="tb">Frein</button><button id="bG" class="tb">Gaz</button>
+<div id="load"><h1>Lyon réel</h1>
+  <p>Démo : le vrai Lyon, reconstruit en 3D à partir des photos aériennes 2023 de la Métropole. Les quartiers se chargent au fur et à mesure (connexion internet nécessaire).</p>
+  <div id="bar"><div></div></div><p id="lt">Chargement du moteur 3D…</p>
+  <button id="go">Conduire</button></div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const TOUCH=matchMedia('(pointer:coarse)').matches;
+if(TOUCH) document.body.classList.add('touch');
+addEventListener('touchstart',()=>document.body.classList.add('touch'),{passive:true});
+addEventListener('contextmenu',e=>e.preventDefault());
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+
+// ---- moteur : vue Cesium dépouillée (pas d'imagerie Ion, pas de relief : seul le photomaillage est affiché)
+const viewer=new Cesium.Viewer('v',{baseLayer:false,animation:false,timeline:false,baseLayerPicker:false,geocoder:false,homeButton:false,
+  sceneModePicker:false,navigationHelpButton:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,
+  requestRenderMode:false,msaaSamples:TOUCH?1:4});
+const scene=viewer.scene;
+scene.globe.show=false;
+scene.backgroundColor=Cesium.Color.fromCssColorString('#b9cfe2');
+scene.skyAtmosphere.show=true;
+scene.screenSpaceCameraController.enableInputs=false;
+scene.fog.enabled=true; scene.fog.density=0.0006;
+if(TOUCH) viewer.resolutionScale=Math.min(1,1.5/(devicePixelRatio||1)*1.2);
+
+// ---- repère local ENU centré sur la place Bellecour (x = est, y = nord, z = haut, en mètres)
+const LAT0=45.7578, LON0=4.8320;
+let ENU=null, INV=null, Z0=217;   // Z0 : hauteur ellipsoïdale du sol de la Presqu’île (≈ 167 m NGF + 50 m de géoïde), affinée par rayon
+function setFrame(h){ ENU=Cesium.Transforms.eastNorthUpToFixedFrame(Cesium.Cartesian3.fromDegrees(LON0,LAT0,h)); INV=Cesium.Matrix4.inverse(ENU,new Cesium.Matrix4()); }
+setFrame(0);
+const toW=(x,y,z)=>Cesium.Matrix4.multiplyByPoint(ENU,new Cesium.Cartesian3(x,y,z),new Cesium.Cartesian3());
+const UPW=()=>Cesium.Matrix4.multiplyByPointAsVector(ENU,new Cesium.Cartesian3(0,0,1),new Cesium.Cartesian3());
+const dirW=(x,y,z)=>Cesium.Cartesian3.normalize(Cesium.Matrix4.multiplyByPointAsVector(ENU,new Cesium.Cartesian3(x,y,z),new Cesium.Cartesian3()),new Cesium.Cartesian3());
+
+// ---- voiture (deux boîtes) : cap a = 0 vers l'est, sens trigonométrique
+// départ : rue de la Barre (voie principale à sens unique vers l'ouest, vers Bellecour)
+const START={x:262.5,y:-21.0,a:2.76,nom:'Rue de la Barre'};
+const car={x:START.x,y:START.y,z:Z0,a:START.a,v:0,ready:false};
+function carOrient(){ const p=toW(car.x,car.y,car.z); return Cesium.Transforms.headingPitchRollQuaternion(p,new Cesium.HeadingPitchRoll(Math.PI/2-car.a,0,0)); }
+const body=viewer.entities.add({position:new Cesium.CallbackProperty(()=>toW(car.x,car.y,car.z+0.65),false),
+  orientation:new Cesium.CallbackProperty(carOrient,false),
+  box:{dimensions:new Cesium.Cartesian3(1.9,4.4,0.9),material:Cesium.Color.fromCssColorString('#ffcc33')}});
+const cab=viewer.entities.add({position:new Cesium.CallbackProperty(()=>{ const f=-0.3; return toW(car.x+Math.cos(car.a)*f,car.y+Math.sin(car.a)*f,car.z+1.35); },false),
+  orientation:new Cesium.CallbackProperty(carOrient,false),
+  box:{dimensions:new Cesium.Cartesian3(1.65,2.3,0.55),material:Cesium.Color.fromCssColorString('#25303b')}});
+const EXCL=[body,cab];
+
+// ---- rayons sur le photomaillage : sol (vers le bas) et obstacles (vers l'avant)
+function ray(ox,oy,oz,dx,dy,dz){ const r=new Cesium.Ray(toW(ox,oy,oz),dirW(dx,dy,dz)); const h=scene.pickFromRay(r,EXCL);
+  if(!h||!h.position) return null; const q=Cesium.Matrix4.multiplyByPoint(INV,h.position,new Cesium.Cartesian3()); return {x:q.x,y:q.y,z:q.z,d:Cesium.Cartesian3.distance(h.position,r.origin)}; }
+function groundAt(x,y,ref){ const h=ray(x,y,ref+2.2,0,0,-1); return h && h.d<12 ? h.z : null; }
+
+// ---- entrées clavier + tactile
+const K={}; addEventListener('keydown',e=>{ K[e.code]=true; if(e.code.startsWith('Arrow')||e.code==='Space') e.preventDefault(); });
+addEventListener('keyup',e=>{ K[e.code]=false; });
+const T={L:0,R:0,G:0,B:0};
+for(const [id,k] of [['bL','L'],['bR','R'],['bG','G'],['bB','B']]){ const b=$(id);
+  b.addEventListener('pointerdown',e=>{ T[k]=1; b.classList.add('on'); try{b.setPointerCapture(e.pointerId)}catch(_){} e.preventDefault(); });
+  for(const ev of ['pointerup','pointercancel','lostpointercapture']) b.addEventListener(ev,()=>{ T[k]=0; b.classList.remove('on'); }); }
+
+// ---- physique arcade simple
+let gT=0, cT=0, camD=8, last=performance.now(), started=false;
+function step(dt){
+  const up=K.KeyW||K.ArrowUp||T.G, dn=K.KeyS||K.ArrowDown||T.B, lf=K.KeyA||K.ArrowLeft||T.L, rt=K.KeyD||K.ArrowRight||T.R, hb=K.Space;
+  if(up) car.v+= (car.v<0?14:6.5*(1-car.v/26))*dt;
+  if(dn) car.v-= (car.v>0.3?14:4)*dt;
+  if(!up&&!dn) car.v-=Math.sign(car.v)*Math.min(Math.abs(car.v),2.2*dt);
+  if(hb) car.v-=Math.sign(car.v)*Math.min(Math.abs(car.v),10*dt);
+  car.v=clamp(car.v,-6,26);
+  const steer=(lf?1:0)-(rt?1:0);
+  car.a+=steer*clamp(car.v/5,-1,1)*(1.9-Math.min(0.9,Math.abs(car.v)/25))*dt;
+  const nx=car.x+Math.cos(car.a)*car.v*dt, ny=car.y+Math.sin(car.a)*car.v*dt;
+  // obstacle devant (ou derrière en marche arrière) : rayon horizontal à 1,2 m du sol
+  const s=Math.sign(car.v)||1, hit=Math.abs(car.v)>0.1 ? ray(car.x,car.y,car.z+1.2,Math.cos(car.a)*s,Math.sin(car.a)*s,0) : null;
+  if(hit && hit.d<2.4+Math.abs(car.v)*dt){ car.v*=-0.25; }
+  else { car.x=nx; car.y=ny; }
+  // sol : toutes les 3 images, lissé (suit les pentes, ignore les « trous » du maillage)
+  if((gT+=dt)>0.05){ gT=0; const g=groundAt(car.x,car.y,car.z); if(g!==null && Math.abs(g-car.z)<3) car.z+=(g-car.z)*0.5; }
+}
+function cameraFollow(dt){
+  if(!car.ready){ viewer.camera.setView({destination:toW(START.x-60,START.y-20,Z0+90),orientation:{direction:dirW(1,0.3,-0.9),up:UPW()}}); return; }
+  const fx=Math.cos(car.a), fy=Math.sin(car.a), sp=Math.abs(car.v);
+  let want=7.5+sp*0.12;
+  if((cT+=dt)>0.08){ cT=0; const h=ray(car.x,car.y,car.z+2,-fx,-fy,0.35); if(h && h.d<want) want=Math.max(2.5,h.d-0.8); camD+=(want-camD)*(want<camD?0.6:0.08); }
+  const ex=car.x-fx*camD, ey=car.y-fy*camD, ez=car.z+2.6+camD*0.18;
+  const tx=car.x+fx*5, ty=car.y+fy*5, tz=car.z+1.2;
+  const eye=toW(ex,ey,ez), tgt=toW(tx,ty,tz);
+  const dir=Cesium.Cartesian3.normalize(Cesium.Cartesian3.subtract(tgt,eye,new Cesium.Cartesian3()),new Cesium.Cartesian3());
+  viewer.camera.setView({destination:eye,orientation:{direction:dir,up:UPW()}});
+  viewer.camera.frustum.fov=Cesium.Math.toRadians(innerHeight>innerWidth?75:62);
+}
+scene.preRender.addEventListener(()=>{
+  const now=performance.now(), dt=Math.min(0.05,(now-last)/1000); last=now;
+  if(started && car.ready) step(dt);
+  cameraFollow(dt);
+  $('speed').innerHTML=Math.round(Math.abs(car.v)*3.6)+' <small>km/h</small>';
+});
+
+// ---- chargement du photomaillage
+(async()=>{
+  try{
+    const ts=await Cesium.Cesium3DTileset.fromUrl('https://download.data.grandlyon.com/files/grandlyon/2023/mesh/tileset.json',
+      {maximumScreenSpaceError:TOUCH?12:6, cacheBytes:(TOUCH?256:768)*1024*1024, skipLevelOfDetail:true, dynamicScreenSpaceError:true});
+    scene.primitives.add(ts);
+    $('lt').textContent='Chargement des quartiers autour de Bellecour…'; viewer.camera.setView({destination:toW(START.x-40,START.y,80),orientation:{direction:dirW(1,0,-1),up:UPW()}});
+    let maxPending=1;
+    ts.loadProgress.addEventListener((pending,processing)=>{ const n=pending+processing; maxPending=Math.max(maxPending,n); $('bar').firstChild.style.width=Math.round(100*(1-n/maxPending))+'%'; });
+    // hauteur du sol à Bellecour : on descend un rayon depuis 600 m une fois les premières tuiles là
+    const findGround=()=>{ const h=ray(START.x,START.y,600,0,0,-1); if(h){ car.z=h.z; car.ready=true; return true; } return false; };
+    // on ne peut partir qu'une fois le sol trouvé : sinon la voiture (et la caméra) seraient sous la chaussée,
+    // Cesium ne sélectionnerait plus aucune tuile et tous les rayons échoueraient
+    const poll=setInterval(()=>{ if(findGround()){ clearInterval(poll); $('lt').textContent='Prêt.'; $('go').style.display='block'; } },500);
+  }catch(e){ console.error(e); $('lt').textContent='Impossible de charger le photomaillage : '+e.message; }
+})();
+$('go').onclick=()=>{ if(!car.ready) return; $('load').style.display='none'; started=true; };
+window.__photo={viewer,car,ray,step,K}; // débogage (le panneau masqué ralentit le rendu : appeler step(1/60) en boucle)
+</script>
+</body>
+</html>
