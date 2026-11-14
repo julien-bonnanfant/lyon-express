@@ -177,7 +177,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261115-001716'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261115-002323'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1585,29 +1585,55 @@ function drawBuf3(o,n){ const gl=G3.gl, L=G3.L; gl.bindBuffer(gl.ARRAY_BUFFER,o)
   gl.vertexAttribPointer(L.p,3,gl.FLOAT,false,32,0); gl.vertexAttribPointer(L.c,3,gl.FLOAT,false,32,12); gl.vertexAttribPointer(L.t,2,gl.FLOAT,false,32,24);
   gl.drawArrays(gl.TRIANGLES,0,n); }
 // piéton articulé : pavés {hx,hy,cy,z0,z1,pz pivot,ang,c} ; c : 0 pantalon, 1 haut, 2 peau, 3 cheveux ; s = balancement (-1..1)
-// Personnage : prismes elliptiques effilés (z0→z1, rayons bas rx0/ry0 et haut rx1/ry1, n côtés), articulés autour de pz.
-// c : 0 pantalon, 1 haut, 2 peau, 3 cheveux ; s = balancement de la marche (-1..1). ≈ 150 triangles.
-function pedParts(s){ const a=s*0.55, b=-a*0.8; return [
-  {cx:0,cy:-.09,z0:0,z1:.86,rx0:.07,ry0:.06,rx1:.085,ry1:.08,n:6,pz:.86,ang:a,c:0},{cx:0,cy:.09,z0:0,z1:.86,rx0:.07,ry0:.06,rx1:.085,ry1:.08,n:6,pz:.86,ang:-a,c:0},
-  {cx:0,cy:0,z0:.84,z1:1.42,rx0:.105,ry0:.16,rx1:.125,ry1:.205,n:8,pz:0,ang:0,c:1},
-  {cx:0,cy:-.25,z0:.82,z1:1.4,rx0:.042,ry0:.04,rx1:.06,ry1:.055,n:5,pz:1.38,ang:b,c:1},{cx:0,cy:.25,z0:.82,z1:1.4,rx0:.042,ry0:.04,rx1:.06,ry1:.055,n:5,pz:1.38,ang:-b,c:1},
-  {cx:0,cy:0,z0:1.4,z1:1.5,rx0:.05,ry0:.05,rx1:.05,ry1:.05,n:5,pz:0,ang:0,c:2},
-  {cx:.01,cy:0,z0:1.48,z1:1.72,rx0:.092,ry0:.082,rx1:.105,ry1:.095,n:8,pz:0,ang:0,c:2},
-  {cx:-.012,cy:0,z0:1.66,z1:1.775,rx0:.114,ry0:.104,rx1:.092,ry1:.084,n:8,pz:0,ang:0,c:3}]; }
-// emit(a,b,c,indiceCouleur,normaleLocale) ; repère local : x avant, y droite, z haut
-function pedTrisLocal(s,emit){
-  for(const q of pedParts(s)){ const cs=Math.cos(q.ang), sn=Math.sin(q.ang), n=q.n;
-    const V=(k,top)=>{ const t=k*2*Math.PI/n, x=q.cx+(top?q.rx1:q.rx0)*Math.cos(t), y=q.cy+(top?q.ry1:q.ry0)*Math.sin(t), dz=(top?q.z1:q.z0)-q.pz; return q.pz ? [x*cs+dz*sn, y, q.pz-x*sn+dz*cs] : [x,y,dz]; };
-    const C=(()=>{ const dz=q.z1-q.pz; return q.pz ? [q.cx*cs+dz*sn, q.cy, q.pz-q.cx*sn+dz*cs] : [q.cx,q.cy,q.z1]; })();
-    for(let k=0;k<n;k++){ const tm=(k+0.5)*2*Math.PI/n, nr=[Math.cos(tm),Math.sin(tm),0], a0=V(k,0), a1=V(k+1,0), b0=V(k,1), b1=V(k+1,1);
-      emit(a0,a1,b1,q.c,nr); emit(a0,b1,b0,q.c,nr); emit(C,b0,b1,q.c,[0,0,1]); } } }
-const PANTS=[0.17,0.18,0.22], HAIR=[0.16,0.11,0.08];
-// poses de marche mises en cache (17 poses) : tableau plat [x,y,z, indiceCouleur, nx,ny,nz] par sommet
+// ---- Personnage articulé. Repère local : x avant, y droite, z haut (m).
+// Chaque membre est un tronc de cône elliptique tendu entre deux articulations (seg) ; les articulations sont
+// calculées par cinématique directe à partir de la phase de marche ph (0..2π) : la cuisse balance, le genou plie
+// quand la jambe passe vers l'avant, bras opposés aux jambes, coude légèrement fléchi, corps qui monte et descend.
+// Couleurs : 0 pantalon, 1 haut, 2 peau, 3 cheveux, 4 chaussures. variant 1 = cheveux longs, épaules plus étroites.
+function pedTrisLocal(ph,emit,variant){
+  const idle=ph===null||ph===undefined, sA=idle?0:Math.sin(ph), cA=idle?0:Math.cos(ph), fem=variant===1;
+  // tronc de cône entre P0 et P1 (dans le plan sagittal), rayons (dans le plan, latéral) à chaque bout
+  const seg=(P0,P1,a0,b0,a1,b1,n,c,cap0,cap1)=>{ let dx=P1[0]-P0[0], dz=P1[2]-P0[2]; const l=Math.hypot(dx,dz)||1; dx/=l; dz/=l; const ex=dz, ez=-dx; // e ⟂ axe, dans le plan xz
+    const V=(P,ra,rb,k)=>{ const t=k*2*Math.PI/n, c1=Math.cos(t)*ra, s1=Math.sin(t)*rb; return [P[0]+ex*c1, P[1]+s1, P[2]+ez*c1]; };
+    for(let k=0;k<n;k++){ const tm=(k+0.5)*2*Math.PI/n, nr=[ex*Math.cos(tm),Math.sin(tm),ez*Math.cos(tm)], p0=V(P0,a0,b0,k), p1=V(P0,a0,b0,k+1), q0=V(P1,a1,b1,k), q1=V(P1,a1,b1,k+1);
+      emit(p0,p1,q1,c,nr); emit(p0,q1,q0,c,nr); if(cap1) emit(P1,q0,q1,c,[dx,0,dz]); if(cap0) emit(P0,p1,p0,c,[-dx,0,-dz]); } };
+  const at=(P,len,phi)=>[P[0]+len*Math.sin(phi),P[1],P[2]-len*Math.cos(phi)];   // phi > 0 : vers l'avant
+  // jambes
+  const legs=[-1,1].map(sd=>{ const sw=sd*sA, fw=sd*cA, th=0.52*sw, kb=idle?0.04:0.95*Math.max(0,fw)*(0.55+0.45*Math.abs(sA))+0.08;
+    const hip=[0,sd*0.088,0.9], knee=at(hip,0.44,th), ank=at(knee,0.42,th-kb); return {hip,knee,ank,sh:th-kb}; });
+  const zoff=0.055-Math.min(legs[0].ank[2],legs[1].ank[2]);                       // le pied le plus bas touche le sol (donne le balancement vertical)
+  const up=P=>[P[0],P[1],P[2]+zoff];
+  for(const L of legs){ const hip=up(L.hip), knee=up(L.knee), ank=up(L.ank);
+    seg(hip,knee,0.082,0.08,0.06,0.058,7,0); seg(knee,ank,0.057,0.055,0.04,0.04,6,0);
+    const fa=Math.max(-0.5,Math.min(0.35,L.sh*0.6)), heel=[ank[0]-0.07*Math.cos(fa),ank[1],ank[2]-0.025+0.07*Math.sin(fa)], toe=[ank[0]+0.19*Math.cos(fa),ank[1],ank[2]-0.03-0.19*Math.sin(fa)];
+    seg(heel,toe,0.045,0.048,0.03,0.042,5,4,true,true); }
+  // bassin, buste, épaules, cou
+  const lean=idle?0:0.04, pel=up([0,0,0.86]), wai=up([0.005,0,1.02]), che=up([0.02+lean*0.3,0,1.32]), sho=up([0.025+lean*0.4,0,1.44]), nk0=up([0.03+lean*0.4,0,1.47]), nk1=up([0.035+lean*0.5,0,1.54]);
+  const shW=fem?0.175:0.205, wW=fem?0.125:0.15, hW=fem?0.165:0.155;
+  seg(pel,wai,0.1,hW,0.095,wW,9,0,true); seg(wai,che,0.095,wW,0.118,shW,9,1); seg(che,sho,0.118,shW,0.1,shW*0.93,9,1); seg(sho,nk0,0.1,shW*0.93,0.05,0.07,9,1,false,true);
+  seg(nk0,nk1,0.047,0.047,0.045,0.045,6,2);
+  // bras (manches courtes : avant-bras et mains couleur peau)
+  for(const sd of [-1,1]){ const sw=-sd*sA, th=idle?0.03:0.5*sw, eb=idle?0.12:0.28+0.3*Math.max(0,sw);
+    const S=[sho[0]-0.005,sd*(shW+0.028),sho[2]-0.03], E=at(S,0.285,th), Wr=at(E,0.255,th+eb), Hd=at(Wr,0.085,th+eb+0.1);
+    seg(S,E,0.052,0.05,0.042,0.04,6,1,true); seg(E,Wr,0.039,0.037,0.03,0.028,6,2); seg(Wr,Hd,0.032,0.022,0.024,0.017,5,2,false,true); }
+  // tête : mâchoire, crâne, sommet ; cheveux en calotte (+ nappe dans le dos pour les cheveux longs)
+  const hx=nk1[0]+0.01, hz=nk1[2];
+  seg([hx,0,hz-0.02],[hx+0.004,0,hz+0.07],0.07,0.062,0.098,0.086,9,2,true); seg([hx+0.004,0,hz+0.07],[hx,0,hz+0.17],0.098,0.086,0.103,0.092,9,2); seg([hx,0,hz+0.17],[hx-0.004,0,hz+0.245],0.103,0.092,0.07,0.064,9,2,false,true);
+  seg([hx-0.016,0,hz+0.125],[hx-0.016,0,hz+0.2],0.108,0.099,0.104,0.095,9,3); seg([hx-0.016,0,hz+0.2],[hx-0.014,0,hz+0.268],0.104,0.095,0.062,0.057,9,3,false,true);
+  if(fem) seg([hx-0.075,0,hz-0.14],[hx-0.07,0,hz+0.15],0.035,0.085,0.05,0.098,7,3,true);
+}
+const PANTS=[0.17,0.18,0.22], HAIR=[0.16,0.11,0.08], SHOES=[0.1,0.09,0.09];
+const PANTSV=[[0.17,0.18,0.22],[0.2,0.25,0.38],[0.3,0.27,0.22],[0.12,0.12,0.13],[0.42,0.4,0.36]], HAIRV=[[0.16,0.11,0.08],[0.07,0.06,0.05],[0.38,0.25,0.12],[0.62,0.5,0.28],[0.45,0.44,0.42]];
+// poses mises en cache : 16 phases de marche + immobile, × 2 silhouettes ; tableau plat [x,y,z, couleur, nx,ny,nz] par sommet
 const PEDPOSE=new Map();
-function pedPose(s){ const q=Math.round(s*8); let P=PEDPOSE.get(q); if(!P){ const L=[]; pedTrisLocal(q/8,(a,b,c,ci,n)=>{ for(const v of [a,b,c]) L.push(v[0],v[1],v[2],ci,n[0],n[1],n[2]); }); P=new Float32Array(L); PEDPOSE.set(q,P); } return P; }
-function pedMesh3(A,p,col,skin){ const fx=Math.cos(p.a), fz=Math.sin(p.a), rx=-fz, rz=fx, C=[PANTS,col,skin,HAIR], P=pedPose(Math.sin(p.ph||0));
-  for(let i=0;i<P.length;i+=7){ const cc=C[P[i+3]], k=P[i+6]?1:faceK(fx*P[i+4]+rx*P[i+5],fz*P[i+4]+rz*P[i+5]);
-    A.push(p.x+fx*P[i]+rx*P[i+1], P[i+2], p.y+fz*P[i]+rz*P[i+1], cc[0]*k,cc[1]*k,cc[2]*k, NOTEX,0); } }
+function pedPose(ph,variant){ const q=(ph===null||ph===undefined||ph===0)?-1:((Math.round(ph/(2*Math.PI)*16)%16)+16)%16, key=q*2+(variant?1:0); let P=PEDPOSE.get(key);
+  if(!P){ const L=[]; pedTrisLocal(q<0?null:q*2*Math.PI/16,(a,b,c,ci,n)=>{ for(const v of [a,b,c]) L.push(v[0],v[1],v[2],ci,n[0],n[1],n[2]); },variant?1:0); P=new Float32Array(L); PEDPOSE.set(key,P); } return P; }
+// identité stable d'un passant (taille, corpulence, coiffure, pantalon) tirée de sa couleur et de sa vitesse
+function pedLook(p){ if(p._lk) return p._lk; const c=p.col||'#888888'; let h=0; for(let i=1;i<c.length;i++) h=(h*31+c.charCodeAt(i))>>>0; h=(h+Math.round((p.spd||1.3)*977))>>>0;
+  return p._lk={v:h%5<2?1:0, sc:0.93+(h%13)/13*0.13, wd:0.92+(h%7)/7*0.18, pants:PANTSV[h%5], hair:HAIRV[(h>>>3)%5]}; }
+function pedMesh3(A,p,col,skin){ const fx=Math.cos(p.a), fz=Math.sin(p.a), rx=-fz, rz=fx, K=pedLook(p), C=[K.pants,col,skin,K.hair,SHOES], P=pedPose(p.ph,K.v), sc=K.sc, wd=K.wd*sc;
+  for(let i=0;i<P.length;i+=7){ const cc=C[P[i+3]], nx=P[i+4], ny=P[i+5], k=0.8+0.2*((fx*nx+rx*ny)*SUN[0]+(fz*nx+rz*ny)*SUN[1])+0.13*P[i+6], x=P[i]*sc, y=P[i+1]*wd;
+    A.push(p.x+fx*x+rx*y, P[i+2]*sc, p.y+fz*x+rz*y, cc[0]*k,cc[1]*k,cc[2]*k, NOTEX,0); } }
 function pedBox3(D,p,col,skin){
   if(p.state==='down'){ box3(D,p.x,p.y,p.a,0,0,0.8,0.25,0,0.3,col); return; }
   pedMesh3(D,p,col,skin);
@@ -1814,7 +1840,7 @@ function vtModelUrl(name){ const V=VT[name], T=[];
   { const L=V.T.L/2+0.12, W=V.T.W/2+0.06, k=[0.04,0.04,0.05], q=[[-L,-W],[L,-W],[L,W],[-L,W]];
     for(const i of [0,1,2,0,2,3]) T.push(q[i][0],0.05,q[i][1],...k); }
   return gltfTris(T); }
-function pedPoseUrl(s,shirt){ const T=[], C=[PANTS,shirt,[0.85,0.68,0.55],HAIR];
+function pedPoseUrl(s,shirt){ const T=[], C=[PANTS,shirt,[0.85,0.68,0.55],HAIR,SHOES];
   pedTrisLocal(s,(a,b,c,ci)=>{ const cc=C[ci]; for(const v of [a,b,c]) T.push(v[0],v[2],v[1],cc[0],cc[1],cc[2]); });
   for(let k=0;k<8;k++){ const a0=k*Math.PI/4, a1=a0+Math.PI/4, r=0.42; T.push(0.05,0.04,0, 0.05,0.05,0.06, 0.05+Math.cos(a0)*r,0.04,Math.sin(a0)*r*0.8, 0.05,0.05,0.06, 0.05+Math.cos(a1)*r,0.04,Math.sin(a1)*r*0.8, 0.05,0.05,0.06); } // ombre de contact
   return gltfTris(T); }
@@ -1863,7 +1889,7 @@ async function initReel(){
   const carsM=Object.values(pools).flat(), pedU=pedModelUrl();
   // piétons : pas de teinte (elle colorerait aussi la peau) -> 6 tenues × 3 poses de marche, permutées selon la phase du pas
   const pedPools={}, SH=[[0.75,0.22,0.17],[0.17,0.24,0.31],[0.09,0.63,0.52],[0.83,0.33,0.05],[0.93,0.94,0.95],[1,0.8,0.2]];
-  for(let v=0;v<6;v++) for(let ps=0;ps<3;ps++) pedPools[v+'_'+ps]=await mk(pedPoseUrl([0.75,0,-0.75][ps],SH[v]),v===5?1:(TOUCH?3:5));
+  for(let v=0;v<6;v++) for(let ps=0;ps<3;ps++) pedPools[v+'_'+ps]=await mk(pedPoseUrl([Math.PI/2,null,Math.PI*1.5][ps],SH[v]),v===5?1:(TOUCH?3:5));
   const pedsM=Object.values(pedPools).flat(), arrow=(await mk(arrowModelUrl(),1))[0];
   try{ arrow.customShader=new Cesium.CustomShader({lightingModel:Cesium.LightingModel.UNLIT}); }catch(_){} // repère de guidage : toujours lumineux
   const pts=scene.primitives.add(new Cesium.PointPrimitiveCollection());
