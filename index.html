@@ -229,6 +229,18 @@ const WATER = MAP.w.filter(p=>p.length>=6).map(p=>bbox(p,{p}));
 const GREEN = MAP.g.filter(p=>p.length>=6).map(p=>bbox(p,{p}));
 const ROADS = [], RG = new Map();
 for(const r of MAP.r){ if(r.p.length<4) continue; bbox(r.p,r); r.x0-=r.w;r.y0-=r.w;r.x1+=r.w;r.y1+=r.w; ROADS.push(r); gridAdd(RG,r); }
+// noms de rues : ancres {x,y,ang,n} tous les ~130 m le long des rues nommées (grille LBG)
+const LABELS=[], LBG=new Map();
+{ const seen=new Map();
+  for(const r of ROADS){ if(!r.n) continue; const p=r.p; let acc=0, len=0; for(let i=0;i+3<p.length;i+=2) len+=Math.hypot(p[i+2]-p[i],p[i+3]-p[i+1]);
+    if(len<22) continue; let next=Math.min(len/2,65);
+    for(let i=0;i+3<p.length;i+=2){ const ex=p[i+2]-p[i], ey=p[i+3]-p[i+1], l=Math.hypot(ex,ey);
+      while(next<=acc+l && l>0){ const t=(next-acc)/l, x=p[i]+ex*t, y=p[i+1]+ey*t;
+        // pas deux ancres du même nom à moins de 90 m (rues découpées en plusieurs tronçons OSM)
+        const prev=seen.get(r.n)||[]; if(!prev.some(q=>Math.hypot(q[0]-x,q[1]-y)<90)){ prev.push([x,y]); seen.set(r.n,prev);
+          const o={x,y,ang:Math.atan2(ey,ex),n:r.n,x0:x,x1:x,y0:y,y1:y}; LABELS.push(o); gridAdd(LBG,o); }
+        next+=130; }
+      acc+=l; } } }
 
 // graphe routier (voitures / piétons)
 // Graphe voiture ORIENTÉ : CADJ[u] = successeurs (sens uniques OSM respectés), CRADJ[v] = prédécesseurs.
@@ -434,6 +446,10 @@ function toggleCar(){
 
 // ============================================================ physique
 function hitsBuilding(x,y){ for(const b of gridQuery(BG,x,y,x,y,[])) if(x>=b.x0&&x<=b.x1&&y>=b.y0&&y<=b.y1&&inPoly(x,y,b.p)) return true; return false; }
+// point libre (hors bâtiment) le plus proche, en spirale jusqu'à 40 m
+function freeNear(x,y){ if(!hitsBuilding(x,y)) return {x,y};
+  for(let r=1;r<=40;r+=1) for(let k=0;k<16;k++){ const a=k*Math.PI/8, px=x+Math.cos(a)*r, py=y+Math.sin(a)*r; if(!hitsBuilding(px,py)) return {x:px,y:py}; }
+  return null; }
 function carHits(c){
   const fx=Math.cos(c.a), fy=Math.sin(c.a), hl=c.l/2, hw=c.w/2;
   const list=gridQuery(BG,c.x-3,c.y-3,c.x+3,c.y+3,[]), tl=gridQuery(TG,c.x-3,c.y-3,c.x+3,c.y+3,[]); if(!list.length&&!tl.length) return false;
@@ -630,7 +646,7 @@ function bust(){
   const loss=Math.round(player.money*0.3); player.money-=loss; player.wanted=0;
   toast('Interpellé ! −'+loss+' €','#5dade2');
   if(player.car){ player.car.mode='free'; player.car.vx=player.car.vy=0; player.car=null; }
-  const s=pick(POI); player.x=s.x+5; player.y=s.y+5;
+  const s=pick(POI), f=freeNear(s.x+5,s.y+5)||s; player.x=f.x; player.y=f.y; // jamais dans un bâtiment
   for(const c of cars) if(c.police) c.gone=true;
   if(mission.stage!=='none'){ mission.stage='none'; mission.wait=3; }
 }
@@ -684,6 +700,9 @@ function update(dt){
   // joueur
   if(player.car){ physStep(player.car,dt,k); player.x=player.car.x; player.y=player.car.y; player.a=player.car.a; }
   else {
+    // filet de sécurité : un joueur à pied coincé dans un bâtiment (interpellation, descente de voiture…)
+    // ne pourrait plus bouger (chaque pas est refusé) et la caméra serait dans le mur -> on le sort
+    if(hitsBuilding(player.x,player.y)){ const f=freeNear(player.x,player.y); if(f){ player.x=f.x; player.y=f.y; } }
     let ix=k.mx, iy=k.my; const n=Math.hypot(ix,iy);
     if(MODE3D){ const fx=Math.cos(cam3.yaw), fy=Math.sin(cam3.yaw), wx=fx*(-iy)-fy*ix, wy=fy*(-iy)+fx*ix; ix=wx; iy=wy; }
     if(n>0.05){ ix/=n; iy/=n; const sp=(k.run?7.5:4.2)*(TJ.id!==null?Math.max(0.35,Math.min(1,n)):1); const nx=player.x+ix*sp*dt, ny=player.y+iy*sp*dt;
@@ -864,6 +883,38 @@ function drawPed(p,isPlayer){
   if(isPlayer){ ctx.strokeStyle='#ffcc33'; ctx.lineWidth=0.18; ctx.beginPath(); ctx.arc(0,0,0.85,0,7); ctx.stroke(); }
   ctx.restore();
 }
+// ---- noms de rues
+const LBL_BOX=[];
+function lblFits(x,y,w,h){ for(const b of LBL_BOX) if(x<b[2]&&x+w>b[0]&&y<b[3]&&y+h>b[1]) return false; LBL_BOX.push([x,y,x+w,y+h]); return true; }
+// 2D : texte posé le long de la rue (toujours lisible, jamais à l'envers), sans chevauchement
+function drawStreetNames2D(vx0,vy0,vx1,vy1){
+  if(S<1.6) return; LBL_BOX.length=0;
+  const fs=clamp(Math.round(S*2.3),10,14); ctx.save(); ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.font='600 '+fs+'px "Segoe UI",system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round';
+  for(const L of gridQuery(LBG,vx0,vy0,vx1,vy1,[])){ const sx=W/2+(L.x-camX)*S, sy=H/2+(L.y-camY)*S; if(sx<0||sx>W||sy<0||sy>H) continue;
+    let a=L.ang; if(Math.cos(a)<0) a+=Math.PI; const w=ctx.measureText(L.n).width+8, c=Math.abs(Math.cos(a)), sn=Math.abs(Math.sin(a));
+    const bw=w*c+fs*sn, bh=w*sn+fs*c; if(!lblFits(sx-bw/2,sy-bh/2,bw,bh)) continue;
+    ctx.save(); ctx.translate(sx,sy); ctx.rotate(a);
+    ctx.strokeStyle=NIGHT?'rgba(0,0,0,.85)':'rgba(255,255,255,.9)'; ctx.lineWidth=3.5; ctx.strokeText(L.n,0,0);
+    ctx.fillStyle=NIGHT?'#f2ead8':'#2b2d33'; ctx.fillText(L.n,0,0); ctx.restore(); }
+  ctx.restore();
+}
+// 3D et Réel : étiquettes des rues proches, projetées à l'écran (proj(x,y,h) -> [sx,sy] en px CSS, ou null)
+function drawStreetNamesFloat(proj,ground){
+  LBL_BOX.length=0; const px=player.x, py=player.y, list=[];
+  for(const L of gridQuery(LBG,px-110,py-110,px+110,py+110,[])){ const d=Math.hypot(L.x-px,L.y-py); if(d<110) list.push([L,d]); }
+  list.sort((a,b)=>a[1]-b[1]); let n=0;
+  ctx.save(); ctx.setTransform(DPR,0,0,DPR,0,0); ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(const [L,d] of list){ if(n>=7) break; const q=proj(L.x,L.y,ground(L.x,L.y)+3.2); if(!q) continue; const [sx,sy]=q;
+    if(sx<20||sx>W-20||sy<60||sy>H-40) continue;
+    const fs=Math.round(clamp(17-d*0.07,10,16)); ctx.font='700 '+fs+'px "Segoe UI",system-ui,sans-serif';
+    const w=ctx.measureText(L.n).width+14, h=fs+8; if(!lblFits(sx-w/2,sy-h/2,w,h)) continue;
+    ctx.globalAlpha=clamp(1.3-d/110,0.35,1);
+    ctx.fillStyle='rgba(20,42,95,.85)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(sx-w/2,sy-h/2,w,h,4) : ctx.rect(sx-w/2,sy-h/2,w,h); ctx.fill(); // plaque bleue
+    ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.fillText(L.n,sx,sy+0.5); n++; }
+  ctx.restore(); ctx.globalAlpha=1;
+}
 // ---- nuit en 2D : calque sombre percé de halos (lampadaires, phares), puis lueur chaude par-dessus
 let NIGHT=false; const NCV=document.createElement('canvas'), nctx=NCV.getContext('2d');
 function drawNight2D(vx0,vy0,vx1,vy1){
@@ -900,8 +951,11 @@ const MS=MM/Math.max(MX1-MX0,MY1-MY0); mm.width=MM*2; mm.height=MM*2;
 function curTarget(){ return mission.stage==='pickup' ? mission.from : mission.stage==='drop' ? mission.to : null; }
 function render(){
   if(REEL && CZ){ try{ renderReel(); }catch(e){ console.error(e); CZFAIL=true; toast('Vue Réel en erreur : vue 3D','#ff6b5b'); setView('3d'); }
-    ctx.setTransform(DPR,0,0,DPR,0,0); ctx.clearRect(0,0,W,H); drawMinimap(curTarget()); return; }
-  if(MODE3D && GL){ render3D(); ctx.setTransform(DPR,0,0,DPR,0,0); ctx.clearRect(0,0,W,H); drawMinimap(curTarget()); return; }
+    ctx.setTransform(DPR,0,0,DPR,0,0); ctx.clearRect(0,0,W,H);
+    if(CZ) drawStreetNamesFloat((x,y,h)=>{ const w=Cesium.SceneTransforms.worldToWindowCoordinates(CZ.scene,czPos(x,y,h)); if(!w) return null;
+      const cam=CZ.viewer.camera, v=Cesium.Cartesian3.subtract(czPos(x,y,h),cam.positionWC,new Cesium.Cartesian3()); if(Cesium.Cartesian3.dot(v,cam.directionWC)<1) return null; return [w.x,w.y]; },(x,y)=>groundH(x,y,false));
+    drawMinimap(curTarget()); return; }
+  if(MODE3D && GL){ render3D(); ctx.setTransform(DPR,0,0,DPR,0,0); ctx.clearRect(0,0,W,H); drawStreetNamesFloat(proj3,()=>0); drawMinimap(curTarget()); return; }
   const sp = player.car ? Math.hypot(player.car.vx,player.car.vy) : 0;
   const targetS = (player.car ? clamp(4.6-sp*0.085,2.3,4.6) : 6.5) * VSC;
   S += (targetS-S)*0.04;
@@ -932,6 +986,7 @@ function render(){
     ctx.fillStyle='rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(x+t.r*0.25,y+t.r*0.3,t.r*0.55,0,7); ctx.fill(); }
   drawBuildings(vx0,vy0,vx1,vy1,camX,camY);
   if(NIGHT) drawNight2D(vx0,vy0,vx1,vy1);
+  drawStreetNames2D(vx0,vy0,vx1,vy1);
   // flèche vers l'objectif
   ctx.setTransform(DPR,0,0,DPR,0,0);
   if(T){ const dx=(T.x-camX)*S, dy=(T.y-camY)*S; if(Math.abs(dx)>W/2-30||Math.abs(dy)>H/2-30){
@@ -987,7 +1042,11 @@ function updateStreet(){
 // - sol (terre-plein, eau, parcs) = une texture peinte une fois depuis les polygones 2D ;
 // - objets mobiles (voitures, piétons, feux, balise, flèche de guidage) reconstruits à chaque image.
 // Format de sommet : x,y,z, r,g,b, u,v (8 floats). u = NOTEX -> pas de texture.
-let MODE3D=false, GL=null, G3=null;
+let MODE3D=false, GL=null, G3=null, LASTM=null;
+// projection 3D stylisée -> écran (px CSS) ; null si derrière la caméra
+function proj3(x,y,h){ const M=LASTM; if(!M) return null; const X=x, Y=h, Z=y;
+  const cx=M[0]*X+M[4]*Y+M[8]*Z+M[12], cy=M[1]*X+M[5]*Y+M[9]*Z+M[13], cw=M[3]*X+M[7]*Y+M[11]*Z+M[15]; if(cw<0.5) return null;
+  return [(cx/cw*0.5+0.5)*W, (1-(cy/cw*0.5+0.5))*H]; }
 const cam3={yaw:0,d:6,init:false};
 const NOTEX=-1000, Q0=[NOTEX,0,NOTEX,0,NOTEX,0,NOTEX,0], SUN=[0.55,0.83];
 const HC=new Map();
@@ -1260,7 +1319,7 @@ function render3D(){
   const SK=NIGHT?SKYN:SKY3;
   gl.viewport(0,0,W3,H3); gl.clearColor(SK[0],SK[1],SK[2],1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT|gl.STENCIL_BUFFER_BIT);
   gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.disable(gl.BLEND); gl.depthMask(true);
-  const M=mul3(persp3((pc?62:58)*(portrait?1.25:1)*Math.PI/180+Math.min(0.15,sp*0.004),W3/H3,0.4,far+100),look3(eye,ctr));
+  const M=mul3(persp3((pc?62:58)*(portrait?1.25:1)*Math.PI/180+Math.min(0.15,sp*0.004),W3/H3,0.4,far+100),look3(eye,ctr)); LASTM=M;
   gl.uniformMatrix4fv(L.M,false,M); gl.uniform3f(L.E,eye[0],eye[1],eye[2]); gl.uniform3f(L.F,SK[0],SK[1],SK[2]);
   gl.uniform2f(L.FR,NIGHT?fog[0]*0.7:fog[0],NIGHT?fog[1]*0.7:fog[1]);
   gl.uniform1f(L.NIGHT,NIGHT?1:0); gl.uniform1f(L.AMB,0.2);
