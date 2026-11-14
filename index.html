@@ -177,7 +177,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261115-002323'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261115-002621'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1675,8 +1675,8 @@ function render3D(){
   // la caméra garde ~0,9 m de marge de chaque côté (sinon elle se colle aux murs dans les ruelles)
   let d=dist; for(let s=0.8;s<=dist;s+=0.5){ const cx=px-fx*s, cz=pz-fz*s; if(hitsBuilding(cx,cz)||(s>1.6&&(hitsBuilding(cx-fz*0.9,cz+fx*0.9)||hitsBuilding(cx+fz*0.9,cz-fx*0.9)))){ d=Math.max(0.8,s-0.7); break; } }
   cam3.d += (d-cam3.d)*(d<cam3.d?0.5:0.06);
-  const sh=shake*0.5, eye=[px-fx*cam3.d+(Math.random()-.5)*sh, hgt+(dist-cam3.d)*0.45+(Math.random()-.5)*sh, pz-fz*cam3.d];
-  let ctr=[px+fx*(pc?8:4), pc?1.25:1.4, pz+fz*(pc?8:4)];
+  const sh=shake*0.5, camN=dist-cam3.d, camS=pc?0:0.38*Math.min(1,cam3.d/dist), eye=[px-fx*cam3.d-fz*camS+(Math.random()-.5)*sh, hgt+camN*(pc?0.45:0.22)+(Math.random()-.5)*sh, pz-fz*cam3.d+fx*camS];
+  let ctr=[px+fx*(pc?8:4)-fz*camS, pc?1.25:1.4-camN*0.42, pz+fz*(pc?8:4)+fx*camS];
   if(window.__cam3){ eye.splice(0,3,...window.__cam3.eye); ctr=window.__cam3.ctr; } // débogage : caméra imposée
   // qualité adaptative (comme en vue Réel) : si le temps entre deux images dépasse 36 ms, on réduit la distance
   // d'affichage (Q3 : 1 -> 0,45) puis la résolution ; on remonte doucement quand la machine suit (< 20 ms)
@@ -2043,7 +2043,7 @@ for(let i=0;i<80;i++) spawnPed(10,320);
 $('play').onclick=()=>{ $('start').style.display='none'; started=true; initAudio(); $('bcam').textContent='Caméra : '+CAM_NAME[CAMLV];
   // vue 3D par défaut ; la 2D seulement si le joueur l'a choisie (clé 'lx_vue' ; l'ancienne clé 'lx3d' est ignorée)
   let vue=null; try{ vue=localStorage.getItem('lx_vue3'); if(localStorage.getItem('lx_nuit')==='1' && !NIGHT) toggleNight(); }catch(_){}
-  setView(vue==='2d'||vue==='3d'||vue==='reel' ? vue : '3d'); // départ en 3D : c'est la vue de conduite attendue par l'utilisateur
+  setView('3d'); /* toujours la 3e personne au lancement : une vue mémorisée (photo aérienne, 2D) faisait croire que la vue rapprochée n'existait pas */
   if(TOUCH){ try{ const r=document.documentElement.requestFullscreen; if(r) r.call(document.documentElement).catch(()=>{}); }catch(_){} } toast('Bienvenue à Lyon !','#ffcc33');
   setTimeout(()=>{ $('help').style.display='none'; },25000); // l'aide pouvait masquer la flèche de guidage
 };
