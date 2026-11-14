@@ -23,7 +23,7 @@
   #speed{right:12px;bottom:18px;font-size:22px;font-weight:700;text-align:right}
   #speed small{font-size:12px;color:var(--muted);font-weight:400}
   #toast{position:fixed;left:50%;top:22%;transform:translateX(-50%);font-size:34px;font-weight:800;text-shadow:0 3px 10px #000;pointer-events:none;opacity:0;transition:opacity .4s;text-align:center}
-  #help{right:12px;top:320px;font-size:12px;color:var(--muted);line-height:1.6}
+  #help{right:12px;top:360px;font-size:12px;color:var(--muted);line-height:1.6}
   #help kbd{background:#333842;color:#fff;border-radius:4px;padding:1px 6px;font-family:inherit}
   #start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,11,14,.82);z-index:10}
   #start .box{max-width:520px;padding:28px 32px;background:#20232b;border-radius:14px;box-shadow:0 20px 60px #000a}
@@ -36,6 +36,8 @@
   /* empilement par ordre du DOM : #g3 (3D) puis #c (2D / surcouche) puis les panneaux */
   #g3{position:fixed;left:0;top:0;display:none}
   #c{position:relative}
+  #bsound{right:12px;top:312px;z-index:6;border:0;color:#ddd;font:700 14px "Segoe UI",system-ui,sans-serif;cursor:pointer;padding:7px 12px;touch-action:none}
+  #bHorn{right:calc(30px + env(safe-area-inset-right));bottom:calc(196px + env(safe-area-inset-bottom));width:58px;height:58px;font-size:11px}
   #bnight{right:12px;top:272px;z-index:6;border:0;color:#b9c8ff;font:700 14px "Segoe UI",system-ui,sans-serif;cursor:pointer;padding:7px 12px;touch-action:none}
   #b3d{right:12px;top:232px;z-index:6;border:0;color:var(--accent);font:700 14px "Segoe UI",system-ui,sans-serif;cursor:pointer;padding:7px 12px;touch-action:none}
   /* ---- commandes tactiles ---- */
@@ -57,7 +59,7 @@
   body.onfoot #bCar{bottom:calc(22px + env(safe-area-inset-bottom));width:76px;height:76px}
   body.touch #help, body.touch .konly{display:none!important}
   body:not(.touch) .tonly{display:none!important}
-  body.touch #speed{top:222px;bottom:auto;right:10px;font-size:18px;padding:5px 10px}
+  body.touch #speed{top:262px;bottom:auto;right:10px;font-size:18px;padding:5px 10px}
   body.touch #street{left:calc(10px + env(safe-area-inset-left));bottom:calc(20px + env(safe-area-inset-bottom));transform:none;font-size:12px;padding:4px 10px;max-width:42vw;overflow:hidden;text-overflow:ellipsis}
   body.touch #credit{left:calc(10px + env(safe-area-inset-left));bottom:calc(3px + env(safe-area-inset-bottom));font-size:9px}
   @media (max-width:700px),(max-height:500px){
@@ -67,6 +69,7 @@
     #toast{font-size:22px;width:90vw}
     #b3d{top:140px;right:10px;padding:6px 10px;font-size:13px}
     #bnight{top:178px;right:10px;padding:6px 10px;font-size:13px}
+    #bsound{top:216px;right:10px;padding:6px 10px;font-size:13px}
     #start .box{padding:18px 20px;margin:10px;max-height:92vh;overflow:auto}
     #start h1{font-size:28px} #start p{font-size:14px}
   }
@@ -85,13 +88,15 @@
 <div id="speed" class="panel">0 <small>km/h</small></div>
 <button id="b3d" class="panel" title="Changer de vue (touche C)">Vue 3D</button>
 <button id="bnight" class="panel" title="Jour / nuit (touche N)">Nuit</button>
+<button id="bsound" class="panel" title="Son (touche M)">Son : oui</button>
 <div id="help" class="panel">
   <kbd>Z Q S D</kbd> / flèches : bouger<br>
   <kbd>E</kbd> : monter / descendre<br>
   <kbd>Espace</kbd> : frein à main<br>
   <kbd>Maj</kbd> : courir<br>
   <kbd>C</kbd> : vue 2D / 3D<br>
-  <kbd>N</kbd> : jour / nuit
+  <kbd>N</kbd> : jour / nuit<br>
+  <kbd>H</kbd> : klaxon · <kbd>M</kbd> : son
 </div>
 <div id="toast"></div>
 <div id="credit">Données cartographiques © contributeurs OpenStreetMap (ODbL) · Hauteurs des bâtiments et arbres : Métropole de Lyon (Licence Ouverte)</div>
@@ -102,6 +107,7 @@
   <button id="bHb" class="tb car">Frein<br>à main</button>
   <button id="bBrake" class="tb car">Frein</button>
   <button id="bGas" class="tb car">Gaz</button>
+  <button id="bHorn" class="tb car">Klaxon</button>
 </div>
 <div id="start"><div class="box">
   <h1>Lyon Express</h1>
@@ -113,6 +119,7 @@
     <kbd>Espace</kbd><span>frein à main (dérapages)</span>
     <kbd>Maj</kbd><span>courir à pied</span>
     <kbd>C</kbd><span>vue 2D / vue 3D à la 3e personne</span>
+    <kbd>H</kbd><span>klaxon (<kbd>M</kbd> : couper le son)</span>
     <kbd>N</kbd><span>mode nuit (phares, lampadaires)</span>
   </div>
   <div class="keys tonly">
@@ -368,6 +375,7 @@ addEventListener('keydown',e=>{ if(!started) return; keys[e.code]=true;
   if((e.code==='KeyE'||e.code==='KeyF') && !e.repeat) toggleCar();
   if(e.code==='KeyC' && !e.repeat) toggle3D();
   if(e.code==='KeyN' && !e.repeat) toggleNight();
+  if(e.code==='KeyM' && !e.repeat) toggleSound();
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup',e=>{ keys[e.code]=false; });
 addEventListener('blur',()=>{ for(const k in keys) keys[k]=false; });
@@ -384,12 +392,13 @@ const TJ={id:null,ox:0,oy:0,ax:0,ay:0,m:0}, TB={gas:0,brake:0,hb:0}, JR=50;
     if(d>JR){ dx*=JR/d; dy*=JR/d; } TJ.ax=dx/JR; TJ.ay=dy/JR; TJ.m=Math.min(1,d/JR); knob.style.transform='translate('+dx+'px,'+dy+'px)'; });
   const jend=e=>{ if(e.pointerId!==TJ.id) return; TJ.id=null; TJ.ax=TJ.ay=TJ.m=0; joy.style.display='none'; };
   tz.addEventListener('pointerup',jend); tz.addEventListener('pointercancel',jend);
-  for(const [id,key] of [['bGas','gas'],['bBrake','brake'],['bHb','hb']]){ const b=$(id);
+  for(const [id,key] of [['bGas','gas'],['bBrake','brake'],['bHb','hb'],['bHorn','horn']]){ const b=$(id);
     b.addEventListener('pointerdown',e=>{ TB[key]=1; b.classList.add('on'); try{ b.setPointerCapture(e.pointerId); }catch(_){} e.preventDefault(); });
     for(const ev of ['pointerup','pointercancel','lostpointercapture']) b.addEventListener(ev,()=>{ TB[key]=0; b.classList.remove('on'); }); }
   $('bCar').addEventListener('pointerdown',e=>{ e.preventDefault(); if(started) toggleCar(); });
   $('b3d').addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); toggle3D(); });
   $('bnight').addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); toggleNight(); });
+  $('bsound').addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); toggleSound(); });
 }
 // sx = direction (-1..1), mx/my = déplacement à pied (analogique)
 const inp = () => {
@@ -456,7 +465,7 @@ function physStep(c,dt,k){
       if(carHits(c)){ c.x=ox; c.y=oy; c.a=oa; if(carHits(c)){ /* coincé : on laisse */ } c.vx*=-0.3; c.vy*=-0.3; }
       else { c.vx*=-0.25; c.vy*=0.8; } }
     else { c.vy*=-0.25; c.vx*=0.8; }
-    if(c===player.car && sp>7) shake=Math.min(1,sp/25);
+    if(c===player.car && sp>7){ shake=Math.min(1,sp/25); crash(shake); }
   }
 }
 
@@ -623,6 +632,46 @@ function bust(){
   if(mission.stage!=='none'){ mission.stage='none'; mission.wait=3; }
 }
 
+// ============================================================ son (Web Audio, entièrement synthétisé)
+// Moteur : dents de scie + carré une octave dessous, filtre passe-bas, hauteur selon la vitesse et l'accélérateur.
+// Sirène : triangle modulée, volume selon la voiture de police en poursuite la plus proche (< 220 m).
+// Klaxon : deux carrés (sol + si). Chocs : bruit filtré. Préférence en localStorage 'lx_son'.
+let AC=null; const SND={on:true,cd:0};
+try{ SND.on=localStorage.getItem('lx_son')!=='0'; }catch(_){}
+function initAudio(){
+  if(AC){ if(AC.state==='suspended') AC.resume(); return; }
+  const C=window.AudioContext||window.webkitAudioContext; if(!C) return; AC=new C();
+  const master=AC.createGain(); master.gain.value=SND.on?0.9:0; master.connect(AC.destination); SND.master=master;
+  const eg=AC.createGain(); eg.gain.value=0; const lp=AC.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=600; lp.Q.value=3;
+  const o1=AC.createOscillator(); o1.type='sawtooth'; const o2=AC.createOscillator(); o2.type='square'; o2.detune.value=-1195;
+  const g2=AC.createGain(); g2.gain.value=0.4; o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(eg); eg.connect(master); o1.start(); o2.start();
+  SND.eng={o1,o2,lp,g:eg};
+  const so=AC.createOscillator(); so.type='triangle'; const sg=AC.createGain(); sg.gain.value=0; so.connect(sg); sg.connect(master); so.start(); SND.sir={o:so,g:sg};
+  const nb=AC.createBuffer(1,(AC.sampleRate*0.45)|0,AC.sampleRate), d=nb.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2.2); SND.noise=nb;
+  document.addEventListener('visibilitychange',()=>{ if(!AC) return; if(document.hidden) AC.suspend(); else AC.resume(); });
+}
+function crash(k){ if(!AC||!SND.on||SND.cd>0) return; SND.cd=0.3;
+  const s=AC.createBufferSource(); s.buffer=SND.noise; const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=700+900*k;
+  const g=AC.createGain(); g.gain.value=0.25+0.5*k; s.connect(f); f.connect(g); g.connect(SND.master); s.start(); }
+function horn(on){ if(!AC) return;
+  if(on && !SND.horn){ const g=AC.createGain(); g.gain.value=0.1; g.connect(SND.master); const a=AC.createOscillator(), b=AC.createOscillator();
+    a.type=b.type='square'; a.frequency.value=392; b.frequency.value=494; a.connect(g); b.connect(g); a.start(); b.start(); SND.horn={g,a,b}; }
+  else if(!on && SND.horn){ const h=SND.horn; SND.horn=null; h.g.gain.setTargetAtTime(0,AC.currentTime,0.03); setTimeout(()=>{ try{ h.a.stop(); h.b.stop(); }catch(_){} },250); } }
+function audioUpdate(dt){ if(!AC) return; const t=AC.currentTime; SND.cd=Math.max(0,SND.cd-dt);
+  const c=player.car, sp=c?Math.hypot(c.vx,c.vy):0, k=inp(), thr=c&&(k.up||k.down)?1:0, f=38+sp*3.2+thr*10;
+  SND.eng.o1.frequency.setTargetAtTime(f,t,0.08); SND.eng.o2.frequency.setTargetAtTime(f,t,0.08);
+  SND.eng.lp.frequency.setTargetAtTime(320+sp*38+thr*450,t,0.1);
+  SND.eng.g.gain.setTargetAtTime(c ? 0.045+0.035*thr+Math.min(0.04,sp*0.002) : 0, t, 0.15);
+  let dmin=1e9; if(player.wanted>0) for(const o of cars) if(o.police && !o.gone && (o.mode==='pchase'||o.mode==='pgraph')) dmin=Math.min(dmin,Math.hypot(o.x-player.x,o.y-player.y));
+  SND.sir.g.gain.setTargetAtTime(dmin<220 ? 0.06*(1-dmin/220) : 0, t, 0.25);
+  SND.sir.o.frequency.setTargetAtTime(760+190*Math.sin(t*Math.PI*1.3), t, 0.05);
+  horn(!!(started && (keys.KeyH || TB.horn)) && !!c);
+}
+function toggleSound(){ SND.on=!SND.on; if(SND.on) initAudio(); if(SND.master) SND.master.gain.value=SND.on?0.9:0;
+  $('bsound').textContent=SND.on?'Son : oui':'Son : non'; try{ localStorage.setItem('lx_son',SND.on?'1':'0'); }catch(_){} }
+if(!SND.on) $('bsound').textContent='Son : non';
+
 // ============================================================ boucle principale
 let last=performance.now(), started=false, distT=0, streetT=0, hudT=0;
 let camX=player.x, camY=player.y, S=6;
@@ -659,7 +708,7 @@ function update(dt){
       if(rel>0){ const imp=rel*0.6;
         if(!aK){ a.vx-=nx*imp; a.vy-=ny*imp; } if(!bK){ b.vx+=nx*imp; b.vy+=ny*imp; }
         for(const [x,o] of [[a,b],[b,a]]) if((x.mode==='ai')&&rel>4){ x.mode='free'; x.vx=Math.cos(x.a)*x.spd+(x===a?-nx:nx)*imp; x.vy=Math.sin(x.a)*x.spd+(x===a?-ny:ny)*imp; }
-        if((a===player.car||b===player.car)&&rel>5){ shake=Math.min(1,rel/20); const o=a===player.car?b:a; if(o.police) addWanted(1); }
+        if((a===player.car||b===player.car)&&rel>5){ shake=Math.min(1,rel/20); crash(shake); const o=a===player.car?b:a; if(o.police) addWanted(1); }
       } } }
   // piétons
   player.hitCD-=dt;
@@ -700,6 +749,7 @@ function update(dt){
   routeT-=dt; if(routeT<=0){ routeT=0.4; updateRoute(); }
   if(toastT>0){ toastT-=dt; if(toastT<=0) $('toast').style.opacity=0; }
   shake=Math.max(0,shake-dt*2.5);
+  audioUpdate(dt);
 }
 
 // ============================================================ rendu
@@ -1298,7 +1348,7 @@ function frame(now){
 }
 for(let i=0;i<40;i++) spawnTraffic(40,480);
 for(let i=0;i<80;i++) spawnPed(10,320);
-$('play').onclick=()=>{ $('start').style.display='none'; started=true;
+$('play').onclick=()=>{ $('start').style.display='none'; started=true; initAudio();
   // vue 3D par défaut ; la 2D seulement si le joueur l'a choisie (clé 'lx_vue' ; l'ancienne clé 'lx3d' est ignorée)
   let vue=null; try{ vue=localStorage.getItem('lx_vue'); if(localStorage.getItem('lx_nuit')==='1' && !NIGHT) toggleNight(); }catch(_){}
   if(vue!=='2d' && !MODE3D) toggle3D();
