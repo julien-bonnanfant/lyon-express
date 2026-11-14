@@ -441,7 +441,7 @@ function nodeInRing(list,r0,r1){ for(let k=0;k<40;k++){ const i=pick(list); cons
 
 const player = {x:0,y:0,a:0,car:null,money:0,wanted:0,seen:0,hitCD:0,busted:0,sigC:-1};
 const start = POI[0]; player.x=start.x+6; player.y=start.y+6;
-{ const u=nearestNode(start.x,start.y); const c=makeCar(0,0,0,'free'); placeOnEdge(c,u,CADJ); c.col='#ffcc33';
+{ const u=nearestNode(start.x,start.y); const c=makeCar(0,0,0,'free'); placeOnEdge(c,u,CADJ); c.col='#ffcc33'; c.type='berline'; c.l=CAR_TYPES.berline.L; c.w=CAR_TYPES.berline.W; // voiture de départ : toujours une berline
   const fx=Math.cos(c.a),fy=Math.sin(c.a); c.x=NX[u]+fx*8-fy*2.5; c.y=NY[u]+fy*8+fx*2.5; cars.push(c);
   player.x=c.x+fy*4; player.y=c.y-fx*4; }
 
@@ -1557,8 +1557,11 @@ async function initReel(){
   const scene=viewer.scene;
   scene.globe.show=false; scene.backgroundColor=Cesium.Color.fromCssColorString('#b9cfe2'); scene.skyAtmosphere.show=true;
   scene.screenSpaceCameraController.enableInputs=false; scene.fog.enabled=true; scene.fog.density=0.0006;
+  // heure figée : Cesium éclaire selon l'horloge réelle (le soir, toute la scène était sombre) -> 15 juillet, 13 h locales
+  viewer.clock.shouldAnimate=false; viewer.clock.currentTime=Cesium.JulianDate.fromIso8601('2023-07-15T11:00:00Z');
+  scene.highDynamicRange=false;
   if(TOUCH) viewer.resolutionScale=Math.min(1,1.8/(devicePixelRatio||1));
-  const ts=await Cesium.Cesium3DTileset.fromUrl(MESH_URL,{maximumScreenSpaceError:TOUCH?12:6,cacheBytes:(TOUCH?256:768)*1024*1024,skipLevelOfDetail:true,dynamicScreenSpaceError:true});
+  const ts=await Cesium.Cesium3DTileset.fromUrl(MESH_URL,{maximumScreenSpaceError:TOUCH?9:3.5,cacheBytes:(TOUCH?320:1024)*1024*1024,skipLevelOfDetail:true,dynamicScreenSpaceError:true});
   scene.primitives.add(ts);
   const mk=async(url,n)=>{ const out=[]; for(let i=0;i<n;i++){ const m=await Cesium.Model.fromGltfAsync({url,colorBlendMode:Cesium.ColorBlendMode.HIGHLIGHT,show:false,forwardAxis:Cesium.Axis.X,upAxis:Cesium.Axis.Y}); scene.primitives.add(m); out.push(m); } return out; };
   const pools={}; for(const t of ['citadine','berline','suv','van','police']){ const big=t!=='van'&&t!=='police'; pools[t]=await mk(vtModelUrl(t),TOUCH?(big?8:4):(big?13:6)); }
