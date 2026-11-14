@@ -94,7 +94,7 @@
 <button id="b3d" class="panel" title="Changer de vue : 2D / 3D / Réel (touche C)">Vue : 2D</button>
 <button id="bnight" class="panel" title="Jour / nuit (touche N)">Nuit</button>
 <button id="bsound" class="panel" title="Son (touche M)">Son : oui</button>
-<button id="bcam" class="panel" title="Hauteur de caméra en vue Réel (touche V)">Caméra : haute</button>
+<button id="bcam" class="panel" title="Hauteur de caméra en vue Réel (touche V)">Caméra : aérienne</button>
 <div id="help" class="panel">
   <kbd>Z Q S D</kbd> / flèches : bouger<br>
   <kbd>E</kbd> : monter / descendre<br>
@@ -145,7 +145,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261114-223638'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261114-223924'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1588,9 +1588,10 @@ let BUILDING3D=false;
 // - hauteur du sol réel : grille de 8 m remplie à la demande par rayons verticaux (pickFromRay) lancés
 //   depuis 3 m au-dessus du sol connu (sous les arbres) ; repli : hauteur du joueur.
 // - Cesium ne sélectionne que les tuiles vues par la caméra : les rayons ne marchent que là où l'on regarde.
-let CAMLV=1; try{ const v=localStorage.getItem('lx_cam'); if(v==='0'||v==='1'||v==='2') CAMLV=+v; }catch(_){}
+// défaut : aérienne (c'est là que le photomaillage est beau ; de près il est déformé)
+let CAMLV=2; try{ const v=localStorage.getItem('lx_cam2'); if(v==='0'||v==='1'||v==='2') CAMLV=+v; }catch(_){}
 const CAM_NAME=['proche','haute','aérienne'];
-function toggleCam(){ CAMLV=(CAMLV+1)%3; cam3.init=false; $('bcam').textContent='Caméra : '+CAM_NAME[CAMLV]; try{ localStorage.setItem('lx_cam',CAMLV); }catch(_){}
+function toggleCam(){ CAMLV=(CAMLV+1)%3; cam3.init=false; $('bcam').textContent='Caméra : '+CAM_NAME[CAMLV]; try{ localStorage.setItem('lx_cam2',CAMLV); }catch(_){}
   if(!REEL) toast('La caméra '+CAM_NAME[CAMLV]+' s’applique en vue Réel','#ffcc33'); }
 let REEL=false, CZ=null, CZLOAD=false, CZFAIL=false, VIEW='2d', VIEW_WANT='2d';
 const CESIUM_URL='https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/';
@@ -1671,6 +1672,9 @@ async function initReel(){
   if(TOUCH) viewer.resolutionScale=Math.min(1,1.8/(devicePixelRatio||1));
   const ts=await Cesium.Cesium3DTileset.fromUrl(MESH_URL,{maximumScreenSpaceError:TOUCH?9:3.5,cacheBytes:(TOUCH?320:1024)*1024*1024,skipLevelOfDetail:true,dynamicScreenSpaceError:true});
   scene.primitives.add(ts);
+  // photomaillage affiché SANS éclairage : ses textures sont des photos (ombres et lumière déjà dedans) ;
+  // l'éclairage du moteur les blanchissait au soleil et les noircissait à l'ombre
+  try{ ts.customShader=new Cesium.CustomShader({lightingModel:Cesium.LightingModel.UNLIT}); }catch(e){ console.warn(e); }
   const mk=async(url,n)=>{ const out=[]; for(let i=0;i<n;i++){ const m=await Cesium.Model.fromGltfAsync({url,colorBlendMode:Cesium.ColorBlendMode.HIGHLIGHT,show:false,forwardAxis:Cesium.Axis.X,upAxis:Cesium.Axis.Y}); scene.primitives.add(m); out.push(m); } return out; };
   const pools={}; for(const t of ['citadine','berline','suv','van','police']){ const big=t!=='van'&&t!=='police'; pools[t]=await mk(vtModelUrl(t),TOUCH?(big?8:4):(big?13:6)); }
   const carsM=Object.values(pools).flat(), pedU=pedModelUrl();
@@ -1709,7 +1713,8 @@ function renderReel(){
   const portrait=H>W, fx=Math.cos(cam3.yaw), fy=Math.sin(cam3.yaw);
   // 3 hauteurs de caméra : 0 proche (au ras du sol, photos floues), 1 haute, 2 aérienne (le photomaillage y est le plus réaliste)
   let dist=(pc?7.2+sp*0.09:4.0)*(portrait?1.35:1), hgt=(pc?3.0+sp*0.035:2.0)*(portrait?1.2:1);
-  if(CAMLV){ dist=[0,24,52][CAMLV]*(portrait?1.2:1)+sp*0.25; hgt=[0,17,44][CAMLV]*(portrait?1.2:1); }
+  CZ.ts.maximumScreenSpaceError = TOUCH ? [9,12,16][CAMLV] : [3.5,6,10][CAMLV]; // de haut, inutile de charger le détail le plus fin
+  if(CAMLV){ dist=[0,26,42][CAMLV]*(portrait?1.2:1)+sp*0.25; hgt=[0,22,68][CAMLV]*(portrait?1.2:1); }
   let d=dist; if(!CAMLV) for(let s=0.8;s<=dist;s+=0.5){ if(hitsBuilding(px-fx*s,py-fy*s)){ d=Math.max(0.8,s-0.7); break; } }
   cam3.d+=(d-cam3.d)*(d<cam3.d?0.5:0.06);
   const sh=shake*0.5, g0=HPLAYER;
