@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Administration · Lyon Transports</title>
+<style>
+:root{color-scheme:dark}
+body{margin:0;background:#0d1117;color:#e6edf3;font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:18px 14px 40px}
+h1{font-size:22px;margin:0 0 4px}.mut{color:#8b949e;font-size:12.5px}
+input,button,select{font:inherit;border:1px solid #30363d;background:#21262d;color:#e6edf3;border-radius:7px;padding:7px 11px}
+button{cursor:pointer}button.pri{background:#2f81f7;border-color:#2f81f7;color:#fff}
+#login{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0;align-items:center}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:12px 0}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px 12px}.card b{font-size:22px;display:block}
+.wrap{overflow-x:auto;border:1px solid #30363d;border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:760px}th,td{padding:7px 10px;text-align:left;border-bottom:1px solid #21262d;white-space:nowrap}
+th{color:#8b949e;font-weight:500;font-size:12.5px;cursor:pointer;background:#161b22;position:sticky;top:0}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.new td{background:#12381f}.tag{font-size:11.5px;padding:1px 7px;border-radius:9px;background:#30363d}
+.ok{color:#3fb950}.no{color:#8b949e}#err{color:#f85149}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+</style></head><body><main>
+<h1>Administration</h1>
+<div class="mut">Comptes des joueurs de Lyon Transports. Accès réservé : mot de passe du compte administrateur du jeu.</div>
+<form id="login"><input id="pw" type="password" autocomplete="current-password" placeholder="mot de passe du compte administrateur" style="flex:1;min-width:220px"><button class="pri">Voir les comptes</button><span id="err"></span></form>
+<div id="out" style="display:none">
+  <div class="cards" id="cards"></div>
+  <div class="bar"><input id="q" placeholder="filtrer par pseudo" style="flex:1;min-width:160px"><select id="fv"><option value="*">Toutes les parties</option></select><button id="re">Actualiser</button><label class="mut"><input type="checkbox" id="auto"> toutes les 30 s</label><button id="out2">Se déconnecter</button></div>
+  <div class="wrap"><table><thead><tr><th data-k="c">Création</th><th data-k="nick">Pseudo</th><th data-k="sc">Partie</th><th data-k="u">Dernière activité</th><th data-k="day" class="n">Jour de jeu</th><th data-k="nl" class="n">Lignes</th><th data-k="rid" class="n">Voyages / j</th><th data-k="lvl" class="n">Niveau</th><th data-k="n" class="n">Envois</th><th data-k="pw">Mot de passe</th></tr></thead><tbody id="tb"></tbody></table></div>
+  <div class="mut" style="margin-top:8px" id="note"></div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const LOCAL=location.hostname==='127.0.0.1';
+const API=LOCAL?(new URLSearchParams(location.search).get('api')||'http://127.0.0.1:8791'):'https://lyontransports.goodchild.fr';
+const VILLES={'':'Lyon',g:'Grenoble',s:'Saint-Étienne',p:'Le Puy-en-Velay'},SCEN={a:'Défi express',b:'Petit budget',c:'Qualité de service'};
+let PW='',ROWS=[],SORT=['u',-1],SEEN=+(localStorage.getItem('lt_admin_seen')||0),TIMER=0;
+try{PW=sessionStorage.getItem('lt_admin_pw')||'';}catch(_){}
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function partie(sc){sc=sc||'';let v='';if(sc&&VILLES[sc[0]]!==undefined&&!SCEN[sc[0]]&&sc[0]!=='w'){v=sc[0];sc=sc.slice(1);}
+  const mode=!sc?'partie libre':SCEN[sc]?'scénario « '+SCEN[sc]+' »':sc[0]==='w'?'défi de la semaine ('+sc+')':'scénario '+sc;return [VILLES[v],mode];}
+function quand(t){if(!t)return '<span class="no">avant le registre</span>';const d=new Date(t),now=Date.now(),m=Math.round((now-t)/6e4);
+  const rel=m<1?'à l’instant':m<60?'il y a '+m+' min':m<1440?'il y a '+Math.round(m/60)+' h':'il y a '+Math.round(m/1440)+' j';
+  return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'})+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})+' <span class="mut">· '+rel+'</span>';}
+const num=v=>v===undefined||v===null?'<span class="no">—</span>':Math.round(v).toLocaleString('fr-FR');
+async function load(){$('err').textContent='';let r;try{r=await fetch(API+'/v1/admin/comptes',{cache:'no-store',headers:{'X-LT-Pass':encodeURIComponent(PW)}});}catch(_){$('err').textContent='Serveur injoignable.';return false;}
+  if(r.status===401){$('err').textContent='Mot de passe incorrect.';return false;}if(r.status===429){$('err').textContent='Trop d’essais : réessayez dans quelques minutes.';return false;}
+  if(r.status===403){$('err').textContent='Le compte administrateur n’a pas de mot de passe : définissez-en un dans le jeu (menu Partie).';return false;}
+  if(!r.ok){$('err').textContent='Erreur '+r.status+'.';return false;}const j=await r.json();ROWS=j.rows||[];
+  try{sessionStorage.setItem('lt_admin_pw',PW);}catch(_){}$('login').style.display='none';$('out').style.display='';
+  const sel=$('fv'),cur=sel.value,ks=[...new Set(ROWS.map(x=>partie(x.sc).join(' · ')))].sort();sel.innerHTML='<option value="*">Toutes les parties</option>'+ks.map(k=>'<option>'+esc(k)+'</option>').join('');sel.value=ks.includes(cur)?cur:'*';
+  draw();$('note').textContent='Compte administrateur : '+j.admin+'. Les comptes créés depuis votre dernière visite sont surlignés en vert. « Avant le registre » : compte créé avant la mise en place de cette page (15/11/2026).';return true;}
+function draw(){const q=$('q').value.trim().toLowerCase(),f=$('fv').value,now=Date.now();
+  const nicks=new Set(ROWS.map(x=>(x.nick||'').toLowerCase())),d1=ROWS.filter(x=>x.c&&now-x.c<864e5),d7=ROWS.filter(x=>x.c&&now-x.c<6048e5),act=new Set(ROWS.filter(x=>now-x.u<864e5).map(x=>(x.nick||'').toLowerCase()));
+  $('cards').innerHTML=[['Joueurs',nicks.size],['Parties',ROWS.length],['Nouvelles parties, 24 h',d1.length],['Nouvelles parties, 7 jours',d7.length],['Joueurs actifs, 24 h',act.size]].map(c=>'<div class="card"><b>'+c[1]+'</b><span class="mut">'+c[0]+'</span></div>').join('');
+  const [k,dir]=SORT,rows=ROWS.filter(x=>(!q||(x.nick||'').toLowerCase().includes(q))&&(f==='*'||partie(x.sc).join(' · ')===f)).sort((a,b)=>{const x=a[k]??'',y=b[k]??'';return (x<y?-1:x>y?1:0)*dir;});
+  $('tb').innerHTML=rows.map(x=>{const [v,m]=partie(x.sc);return '<tr'+(x.c&&x.c>SEEN?' class="new"':'')+'><td>'+quand(x.c)+'</td><td><b>'+esc(x.nick||'?')+'</b></td><td>'+esc(v)+' <span class="tag">'+esc(m)+'</span></td><td>'+quand(x.u)+'</td><td class="n">'+num(x.day)+'</td><td class="n">'+num(x.nl)+'</td><td class="n">'+num(x.rid)+'</td><td class="n">'+num(x.lvl)+'</td><td class="n">'+num(x.n)+'</td><td>'+(x.pw?'<span class="ok">oui</span>':'<span class="no">non</span>')+'</td></tr>';}).join('')||'<tr><td colspan="10" class="mut">Aucun compte.</td></tr>';}
+$('login').onsubmit=async e=>{e.preventDefault();PW=$('pw').value;$('pw').value='';await load();};
+$('re').onclick=load;$('q').oninput=draw;$('fv').onchange=draw;
+$('out2').onclick=()=>{PW='';try{sessionStorage.removeItem('lt_admin_pw');}catch(_){}localStorage.setItem('lt_admin_seen',Date.now());location.reload();};
+$('auto').onchange=e=>{clearInterval(TIMER);if(e.target.checked)TIMER=setInterval(load,30000);};
+document.querySelector('thead').onclick=e=>{const th=e.target.closest('th');if(!th)return;const k=th.dataset.k;SORT=[k,SORT[0]===k?-SORT[1]:(k==='nick'||k==='sc'?1:-1)];draw();};
+addEventListener('pagehide',()=>{if(ROWS.length)localStorage.setItem('lt_admin_seen',Date.now());});
+if(PW)load();
+</script></main></body></html>
