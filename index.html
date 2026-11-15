@@ -177,7 +177,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261115-011933'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261115-012852'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1912,9 +1912,9 @@ let BUILDING3D=false;
 //   depuis 3 m au-dessus du sol connu (sous les arbres) ; repli : hauteur du joueur.
 // - Cesium ne sélectionne que les tuiles vues par la caméra : les rayons ne marchent que là où l'on regarde.
 // défaut : proche = 3e personne derrière la voiture (demande explicite de l'utilisateur, même si le photomaillage est plus beau de haut)
-let CAMLV=2; try{ const v=localStorage.getItem('lx_cam4'); if(v==='1'||v==='2') CAMLV=+v; }catch(_){} // jamais 0 : la vue rapprochée du photomaillage a été retirée (jugée « horrible » par l'utilisateur, à raison)
-const CAM_NAME=['','haute','aérienne'];
-function toggleCam(){ CAMLV=CAMLV===2?1:2; cam3.init=false; $('bcam').textContent='Caméra : '+CAM_NAME[CAMLV]; try{ localStorage.setItem('lx_cam4',CAMLV); }catch(_){}
+let CAMLV=2; try{ const v=localStorage.getItem('lx_cam5'); if(v==='0'||v==='1'||v==='2') CAMLV=+v; }catch(_){} // 0 = proche, rétablie le 15/11/2026 à la demande de l'utilisateur (défaut : aérienne)
+const CAM_NAME=['proche','haute','aérienne'];
+function toggleCam(){ CAMLV=(CAMLV+2)%3; cam3.init=false; $('bcam').textContent='Caméra : '+CAM_NAME[CAMLV]; try{ localStorage.setItem('lx_cam5',CAMLV); }catch(_){}
   if(!REEL) toast('La caméra '+CAM_NAME[CAMLV]+' s’applique en vue Réel','#ffcc33'); }
 let REEL=false, CZ=null, CZLOAD=false, CZFAIL=false, VIEW='2d', VIEW_WANT='2d';
 const CESIUM_URL='https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/';
@@ -1922,6 +1922,24 @@ const MESH_URL='https://download.data.grandlyon.com/files/grandlyon/2023/mesh/ti
 const HCELL=8, HGRID=new Map(), HREQ=new Set(); let HDEF=217, HPLAYER=217; // hauteurs ellipsoïdales (m)
 const hkey=(i,j)=>(i+5000)*100000+(j+5000); // clé positive (i, j de -5000 à 95000)
 const llOf=(x,y)=>[LON0+x/KX, LAT0-y/KY];
+// texture « sol + masque » de l'aplatissement (voir initReel) : 2 m par pixel sur l'emprise du relief embarqué
+let CZFLAT=null, CZINV=null; /* shader d'aplatissement et repère local (hors de CZ, qui n'existe pas encore pendant initReel) */
+function czFlatData(){ const S=2, x0=HZ.x0, y0=HZ.y0, W=Math.floor((HZ.nx-1)*HZ.c/S), H=Math.floor((HZ.ny-1)*HZ.c/S), cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const g=cv.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,W,H); g.setTransform(1/S,0,0,1/S,-x0/S,-y0/S); g.fillStyle='#000'; g.strokeStyle='#000'; g.lineJoin='round'; g.lineCap='round';
+  const path=p=>{ g.beginPath(); g.moveTo(p[0],p[1]); for(let i=2;i<p.length;i+=2) g.lineTo(p[i],p[i+1]); };
+  g.lineWidth=6; for(const b of BUILD){ path(b.p); g.closePath(); g.fill(); g.stroke(); }                 // bâtiments + 3 m
+  g.lineWidth=4; for(const w of WATER){ path(w.p); g.closePath(); g.fill(); g.stroke(); }                 // eau
+  for(const r of ROADS) if(r.b){ g.lineWidth=r.w+26; path(r.p); g.stroke(); }                             // ponts (le sol embarqué y est approximatif)
+  const d=g.getImageData(0,0,W,H).data, out=new Uint8Array(W*H*4);
+  for(let j=0,k=0;j<H;j++) for(let i=0;i<W;i++,k+=4){ const v=clamp(Math.round((dtm(x0+(i+.5)*S,y0+(j+.5)*S)-140)*100),0,65535); out[k]=v>>8; out[k+1]=v&255; out[k+2]=d[k]>127?255:0; out[k+3]=255; }
+  return {data:out,w:W,h:H,s:S,x0,y0}; }
+function czFlatUpdate(){ const F=CZFLAT; if(!F) return; const on=CAMLV===0?1:0; F.setUniform('u_on',on); if(!on) return;
+  const cam=CZ.viewer.camera, C=Cesium, R=C.Matrix4.getMatrix3(CZINV,new C.Matrix3());
+  F.setUniform('u_camL',C.Matrix4.multiplyByPoint(CZINV,cam.positionWC,new C.Cartesian3()));
+  F.setUniform('u_v2l',C.Matrix3.multiply(R,C.Matrix4.getMatrix3(cam.inverseViewMatrix,new C.Matrix3()),new C.Matrix3()));
+  const upW=C.Matrix3.getColumn(C.Matrix3.transpose(R,new C.Matrix3()),2,new C.Cartesian3());           // axe « haut » local, en coordonnées Terre
+  F.setUniform('u_upEC',C.Matrix3.multiplyByVector(C.Matrix4.getMatrix3(cam.viewMatrix,new C.Matrix3()),upW,new C.Cartesian3()));
+  F.setUniform('u_hoff',HOFF); }
 function czPos(x,y,h){ const l=llOf(x,y); return Cesium.Cartesian3.fromDegrees(l[0],l[1],h); }
 // hauteur du sol réel (bilinéaire sur la grille ; cellule inconnue -> demandée, repli sur la hauteur du joueur)
 // Hauteur du sol = altitude IGN embarquée (MAP.hz, grille de 20 m, décimètres) + HOFF.
@@ -2022,7 +2040,27 @@ async function initReel(){
   try{ Cesium.RequestScheduler.maximumRequestsPerServer=3; ts.cullRequestsWhileMovingMultiplier=200; /* moins de morceaux décodés en même temps, moins de demandes en roulant vite */ const B=scene.frameState.jobScheduler._budgets; if(B) for(const b of B){ if(typeof b._total==='number') b._total=Math.min(b._total,4); } }catch(e){ console.warn(e); }
   // photomaillage affiché SANS éclairage : ses textures sont des photos (ombres et lumière déjà dedans) ;
   // l'éclairage du moteur les blanchissait au soleil et les noircissait à l'ombre
-  try{ ts.customShader=new Cesium.CustomShader({lightingModel:Cesium.LightingModel.UNLIT}); }catch(e){ console.warn(e); }
+  // + « aplatissement » pour la caméra proche : dans le relevé 3D, les voitures, piétons et potelets photographiés sont des bosses
+  // informes sur la chaussée. Le shader de sommets ramène au niveau du sol tout sommet situé entre 0,15 et 2,3 m au-dessus,
+  // SAUF près des bâtiments (les rez-de-chaussée seraient écrasés), sur l'eau et sur les ponts (masque). Sol et masque viennent
+  // d'une texture de 2 m par pixel : rouge+vert = altitude sur 16 bits, bleu = masque.
+  try{ const F=czFlatData(); CZINV=Cesium.Matrix4.inverse(Cesium.Transforms.eastNorthUpToFixedFrame(Cesium.Cartesian3.fromDegrees(LON0,LAT0,0)),new Cesium.Matrix4());
+    ts.customShader=new Cesium.CustomShader({lightingModel:Cesium.LightingModel.UNLIT,
+      uniforms:{u_flat:{type:Cesium.UniformType.SAMPLER_2D,value:new Cesium.TextureUniform({typedArray:F.data,width:F.w,height:F.h,minificationFilter:Cesium.TextureMinificationFilter.NEAREST,magnificationFilter:Cesium.TextureMagnificationFilter.NEAREST})},
+        u_on:{type:Cesium.UniformType.FLOAT,value:0}, u_fy:{type:Cesium.UniformType.FLOAT,value:0}, u_hoff:{type:Cesium.UniformType.FLOAT,value:HOFF},
+        u_camL:{type:Cesium.UniformType.VEC3,value:new Cesium.Cartesian3()}, u_upEC:{type:Cesium.UniformType.VEC3,value:new Cesium.Cartesian3(0,1,0)},
+        u_v2l:{type:Cesium.UniformType.MAT3,value:new Cesium.Matrix3()}, u_org:{type:Cesium.UniformType.VEC4,value:new Cesium.Cartesian4(F.x0,F.y0,F.w*F.s,F.h*F.s)}},
+      vertexShaderText:`void vertexMain(VertexInput vsInput, inout czm_modelVertexOutput vsOutput){
+        if(u_on<0.5) return;
+        vec3 pEC=(czm_modelView*vec4(vsOutput.positionMC,1.0)).xyz, l=u_camL+u_v2l*pEC;      // l = est, nord, haut (m) autour du centre de la carte
+        float h=l.z+dot(l.xy,l.xy)/12742000.0;                                                  // courbure de la Terre
+        vec2 uv=(vec2(l.x*0.99828,-l.y*0.99484)-u_org.xy)/u_org.zw; if(u_fy>0.5) uv.y=1.0-uv.y; // mètres réels -> coordonnées du jeu
+        if(uv.x<=0.0||uv.x>=1.0||uv.y<=0.0||uv.y>=1.0) return;
+        vec4 t=texture(u_flat,uv); if(t.b<0.5) return;
+        float dh=h-(140.0+(t.r*65280.0+t.g*255.0)/100.0+u_hoff);
+        if(dh>0.15&&dh<2.3){ vec3 upMC=(czm_inverseModelView*vec4(u_upEC,0.0)).xyz; vsOutput.positionMC-=normalize(upMC)*(dh-0.1); } }`});
+    CZFLAT=ts.customShader; }
+  catch(e){ console.warn(e); try{ ts.customShader=new Cesium.CustomShader({lightingModel:Cesium.LightingModel.UNLIT}); }catch(_){} }
   const mk=async(url,n)=>{ const out=[]; for(let i=0;i<n;i++){ const m=await Cesium.Model.fromGltfAsync({url,colorBlendMode:Cesium.ColorBlendMode.HIGHLIGHT,show:false,forwardAxis:Cesium.Axis.X,upAxis:Cesium.Axis.Y});
       try{ m.imageBasedLighting.imageBasedLightingFactor=new Cesium.Cartesian2(0.45,0.15); }catch(_){} // l'ambiance par défaut délavait les couleurs
       scene.primitives.add(m); out.push(m); } return out; };
@@ -2083,7 +2121,7 @@ function renderReel(){
       const slow=CZ.ft2||0; CZ.ft2=0; // objectif : jamais sous 30 images/s -> on réagit dès 2 images lentes (> 36 ms) sur 30
       if(avg>33||slow>=2) CZ.q=Math.min(4,CZ.q*(slow>=5?1.5:1.25)); else if(avg<20&&slow===0) CZ.q=Math.max(1,CZ.q*0.96);
       CZ.viewer.resolutionScale=(TOUCH?Math.min(1,1.8/(devicePixelRatio||1)):1)*(CZ.q>3?0.5:CZ.q>2.2?0.62:CZ.q>1.5?0.8:1); } }
-  CZ.ts.maximumScreenSpaceError = (TOUCH ? [12,14,18] : [8,9,12])[CAMLV]*CZ.q;
+  CZ.ts.maximumScreenSpaceError = (TOUCH ? [10,14,18] : [5,9,12])[CAMLV]*CZ.q; /* de près : fin, mais 3 faisait tomber la qualité adaptative à 25 % */
   if(CAMLV){ dist=[0,26,42][CAMLV]*(portrait?1.2:1)+sp*0.25; hgt=[0,22,68][CAMLV]*(portrait?1.2:1); }
   let d=dist; if(!CAMLV) for(let s=0.8;s<=dist;s+=0.5){ const cx=px-fx*s, cy=py-fy*s; if(hitsBuilding(cx,cy)||(s>1.6&&(hitsBuilding(cx-fy*0.9,cy+fx*0.9)||hitsBuilding(cx+fy*0.9,cy-fx*0.9)))){ d=Math.max(0.8,s-0.7); break; } }
   cam3.d+=(d-cam3.d)*kf(d<cam3.d?0.5:0.06);
@@ -2142,7 +2180,7 @@ function renderReel(){
     m.color=czCol(col); m.show=true; }
   else CZ.arrow.show=false;
   CZ.night.enabled=!!NIGHT; sc.backgroundColor=Cesium.Color.fromCssColorString(NIGHT?'#0b1222':'#b9cfe2');
-  CZ.viewer.resize(); CZ.viewer.render();
+  czFlatUpdate(); CZ.viewer.resize(); CZ.viewer.render();
 }
 
 // ---- choix de la vue : 2D -> 3D -> Réel -> 2D (bouton / touche C), mémorisé dans 'lx_vue'
