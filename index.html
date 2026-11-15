@@ -177,7 +177,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261115-012852'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261115-013346'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1931,7 +1931,12 @@ function czFlatData(){ const S=2, x0=HZ.x0, y0=HZ.y0, W=Math.floor((HZ.nx-1)*HZ.
   g.lineWidth=4; for(const w of WATER){ path(w.p); g.closePath(); g.fill(); g.stroke(); }                 // eau
   for(const r of ROADS) if(r.b){ g.lineWidth=r.w+26; path(r.p); g.stroke(); }                             // ponts (le sol embarqué y est approximatif)
   const d=g.getImageData(0,0,W,H).data, out=new Uint8Array(W*H*4);
-  for(let j=0,k=0;j<H;j++) for(let i=0;i<W;i++,k+=4){ const v=clamp(Math.round((dtm(x0+(i+.5)*S,y0+(j+.5)*S)-140)*100),0,65535); out[k]=v>>8; out[k+1]=v&255; out[k+2]=d[k]>127?255:0; out[k+3]=255; }
+  // second masque : disque sous chaque arbre d'alignement connu (canal alpha) -> le relevé y est aplati sur toute sa hauteur,
+  // la masse informe du feuillage disparaît et un arbre 3D propre est dessiné à la place (voir treeModelUrl)
+  const c2=document.createElement('canvas'); c2.width=W; c2.height=H; const g2=c2.getContext('2d'); g2.fillStyle='#000'; g2.fillRect(0,0,W,H); g2.setTransform(1/S,0,0,1/S,-x0/S,-y0/S); g2.fillStyle='#fff';
+  for(const t of TREES){ g2.beginPath(); g2.arc(t.x,t.y,t.r*1.35+2.6,0,6.3); g2.fill(); }
+  const d2=g2.getImageData(0,0,W,H).data;
+  for(let j=0,k=0;j<H;j++) for(let i=0;i<W;i++,k+=4){ const v=clamp(Math.round((dtm(x0+(i+.5)*S,y0+(j+.5)*S)-140)*100),0,65535); out[k]=v>>8; out[k+1]=v&255; out[k+2]=d[k]>127?255:0; out[k+3]=d2[k]>127?255:0; }
   return {data:out,w:W,h:H,s:S,x0,y0}; }
 function czFlatUpdate(){ const F=CZFLAT; if(!F) return; const on=CAMLV===0?1:0; F.setUniform('u_on',on); if(!on) return;
   const cam=CZ.viewer.camera, C=Cesium, R=C.Matrix4.getMatrix3(CZINV,new C.Matrix3());
@@ -2001,6 +2006,14 @@ function vtModelUrl(name){ const V=VT[name], T=[];
   { const L=V.T.L/2+0.12, W=V.T.W/2+0.06, k=[0.04,0.04,0.05], q=[[-L,-W],[L,-W],[L,W],[-L,W]];
     for(const i of [0,1,2,0,2,3]) T.push(q[i][0],0.05,q[i][1],...k); }
   return gltfTris(T); }
+function treeModelUrl(){ const T=[], NS=7, PR=[[0.3,0.3],[0.42,0.86],[0.62,1],[0.82,0.72],[1,0.08]], tri=(a,b,c,col)=>{ for(const v of [a,b,c]) T.push(v[0],v[1],v[2],col[0],col[1],col[2]); };
+  for(let k=0;k<6;k++){ const a0=k*Math.PI/3, a1=a0+Math.PI/3, r=0.05, sh=0.7+0.3*Math.cos(a0+0.5), c=[0.36*sh,0.26*sh,0.17*sh];
+    const A=[Math.cos(a0)*r,0,Math.sin(a0)*r], B=[Math.cos(a1)*r,0,Math.sin(a1)*r], C=[Math.cos(a1)*r*0.75,0.36,Math.sin(a1)*r*0.75], D=[Math.cos(a0)*r*0.75,0.36,Math.sin(a0)*r*0.75]; tri(A,B,C,c); tri(A,C,D,c); }
+  const V=(i,k)=>{ const an=k*2*Math.PI/NS+i*0.45, rr=PR[i][1]*(0.86+0.26*(((i*7+k*13)%5)/4)); return [Math.cos(an)*rr,PR[i][0],Math.sin(an)*rr]; };
+  for(let i=0;i<4;i++) for(let k=0;k<NS;k++){ const am=(k+0.5)*2*Math.PI/NS+i*0.45, sh=(0.6+0.14*i)*(0.84+0.2*Math.cos(am-0.8))*(0.94+0.12*((i+k)%2)), c=[0.2*sh,0.34*sh,0.15*sh];
+    tri(V(i,k),V(i,k+1),V(i+1,k+1),c); tri(V(i,k),V(i+1,k+1),V(i+1,k),c); }
+  for(let k=0;k<NS;k++) tri([0,0.3,0],V(0,k+1),V(0,k),[0.12,0.22,0.09]);
+  return gltfTris(T); }
 function pedPoseUrl(s,shirt){ const T=[], C=[PANTS,shirt,[0.85,0.68,0.55],HAIR,SHOES,FACE_D,LIPS,EYE_W];
   pedTrisLocal(s,(a,b,c,ci)=>{ const cc=C[ci]; for(const v of [a,b,c]) T.push(v[0],v[2],v[1],cc[0],cc[1],cc[2]); });
   for(let k=0;k<8;k++){ const a0=k*Math.PI/4, a1=a0+Math.PI/4, r=0.42; T.push(0.05,0.04,0, 0.05,0.05,0.06, 0.05+Math.cos(a0)*r,0.04,Math.sin(a0)*r*0.8, 0.05,0.05,0.06, 0.05+Math.cos(a1)*r,0.04,Math.sin(a1)*r*0.8, 0.05,0.05,0.06); } // ombre de contact
@@ -2058,7 +2071,7 @@ async function initReel(){
         if(uv.x<=0.0||uv.x>=1.0||uv.y<=0.0||uv.y>=1.0) return;
         vec4 t=texture(u_flat,uv); if(t.b<0.5) return;
         float dh=h-(140.0+(t.r*65280.0+t.g*255.0)/100.0+u_hoff);
-        if(dh>0.15&&dh<2.3){ vec3 upMC=(czm_inverseModelView*vec4(u_upEC,0.0)).xyz; vsOutput.positionMC-=normalize(upMC)*(dh-0.1); } }`});
+        if(dh>0.15&&dh<(t.a>0.5?32.0:2.3)){ vec3 upMC=(czm_inverseModelView*vec4(u_upEC,0.0)).xyz; vsOutput.positionMC-=normalize(upMC)*(dh-0.1); } }`});
     CZFLAT=ts.customShader; }
   catch(e){ console.warn(e); try{ ts.customShader=new Cesium.CustomShader({lightingModel:Cesium.LightingModel.UNLIT}); }catch(_){} }
   const mk=async(url,n)=>{ const out=[]; for(let i=0;i<n;i++){ const m=await Cesium.Model.fromGltfAsync({url,colorBlendMode:Cesium.ColorBlendMode.HIGHLIGHT,show:false,forwardAxis:Cesium.Axis.X,upAxis:Cesium.Axis.Y});
@@ -2073,6 +2086,7 @@ async function initReel(){
   for(let v=0;v<6;v++) for(let ps=0;ps<3;ps++) pedPools[v+'_'+ps]=await mk(pedPoseUrl([Math.PI/2,null,Math.PI*1.5][ps],SH[v]),v===5?1:(TOUCH?3:5));
   const pedsM=Object.values(pedPools).flat(), arrow=(await mk(arrowModelUrl(),1))[0];
   try{ arrow.customShader=new Cesium.CustomShader({lightingModel:Cesium.LightingModel.UNLIT}); }catch(_){} // repère de guidage : toujours lumineux
+  const treesM=await mk(treeModelUrl(),TOUCH?26:64); for(const m of treesM){ try{ m.customShader=new Cesium.CustomShader({lightingModel:Cesium.LightingModel.UNLIT}); m.backFaceCulling=false; }catch(_){} }
   const pts=scene.primitives.add(new Cesium.PointPrimitiveCollection());
   const P=[]; for(let i=0;i<220;i++) P.push(pts.add({show:false,pixelSize:8,color:Cesium.Color.WHITE}));
   // nuit : assombrissement global qui épargne les pixels très lumineux (phares, feux)
@@ -2088,7 +2102,7 @@ async function initReel(){
     void main(){ vec4 c=texture(colorTexture,v_textureCoordinates); float l=dot(c.rgb,vec3(0.299,0.587,0.114));
       out_FragColor=vec4(mix(c.rgb*vec3(0.36,0.4,0.6), c.rgb, smoothstep(0.8,0.95,l)),1.0); }`}));
   night.enabled=false;
-  CZ={viewer,scene,ts,carsM,pools,pedsM,pedPools,arrow,P,night,excl:[...carsM,...pedsM,arrow],colors:new Map(),beacon:null,beaconFor:null,zone:null};
+  CZ={viewer,scene,ts,carsM,pools,pedsM,pedPools,treesM,arrow,P,night,excl:[...carsM,...pedsM,arrow],colors:new Map(),beacon:null,beaconFor:null,zone:null};
   // hauteur sous le joueur dès que les premières tuiles sont là
   ts.initialTilesLoaded.addEventListener(()=>{ CZ.ready=true; });
 }
@@ -2180,6 +2194,12 @@ function renderReel(){
     m.color=czCol(col); m.show=true; }
   else CZ.arrow.show=false;
   CZ.night.enabled=!!NIGHT; sc.backgroundColor=Cesium.Color.fromCssColorString(NIGHT?'#0b1222':'#b9cfe2');
+  // arbres 3D de remplacement (caméra proche seulement) : les plus proches, réaffectés quand le joueur a bougé de 4 m
+  if(CZ.treesM){ if(CAMLV!==0){ if(CZ.trOn){ for(const m of CZ.treesM) m.show=false; CZ.trOn=false; CZ.trX=1e9; } }
+    else if(Math.hypot(px-(CZ.trX||1e9),py-(CZ.trY||1e9))>4){ CZ.trX=px; CZ.trY=py; CZ.trOn=true;
+      const near=gridQuery(TG,px-90,py-90,px+90,py+90,[]).map(t=>[(t.x-px)**2+(t.y-py)**2,t]).sort((a,b)=>a[0]-b[0]);
+      CZ.treesM.forEach((m,i)=>{ const e=near[i]; if(!e){ m.show=false; return; } const t=e[1];
+        m.modelMatrix=Cesium.Matrix4.multiplyByScale(Cesium.Transforms.headingPitchRollToFixedFrame(czPos(t.x,t.y,groundH(t.x,t.y)),new Cesium.HeadingPitchRoll((t.x*7.3+t.y*3.1)%6.28,0,0)),new Cesium.Cartesian3(t.r,t.r,t.h),new Cesium.Matrix4()); m.show=true; }); } }
   czFlatUpdate(); CZ.viewer.resize(); CZ.viewer.render();
 }
 
