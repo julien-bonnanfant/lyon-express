@@ -177,7 +177,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261115-011208'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261115-011609'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1375,9 +1375,9 @@ function texFromRGBA(gl,N,data,repeat){ const t=gl.createTexture(); gl.bindTextu
 //  2 fenêtre haute sobre (canut)                               3 moderne (bandeau vitré)
 //  4 rez-de-chaussée commerçant (vitrine + store)               5 arcade en pierre
 //  6 rez-de-chaussée simple (fenêtre + soubassement)            7 mur aveugle
-const FROWS=8;
+const FROWS=16; // 16 et non 12 : la hauteur de la texture doit rester une puissance de 2 (mipmaps + REPEAT en WebGL 1, sinon façades noires). 12–15 libres ; 8–11 = variantes choisies par le shader : 8 persiennes fermées, 9 dernier étage (attique), 10 Vieux Lyon à volet de bois, 11 Presqu'île sans balcon
 function makeFacadeTex(gl){
-  const N=256, H=N*FROWS, PX=(!TOUCH&&gl.getParameter(gl.MAX_TEXTURE_SIZE)>=4096)?2:1, cv=document.createElement('canvas'); cv.width=N*PX; cv.height=H*PX; const g=cv.getContext('2d');
+  const N=256, H=N*FROWS, PX=(!TOUCH&&gl.getParameter(gl.MAX_TEXTURE_SIZE)>=8192)?2:1, cv=document.createElement('canvas'); cv.width=N*PX; cv.height=H*PX; const g=cv.getContext('2d');
   const m=document.createElement('canvas'); m.width=N*PX; m.height=H*PX; const k=m.getContext('2d'); g.scale(PX,PX); k.scale(PX,PX);
   g.fillStyle='#fff'; g.fillRect(0,0,N,H); k.fillStyle='#fff'; k.fillRect(0,0,N,H);
   for(let i=0;i<9000*PX*PX;i++){ const v=228+Math.random()*27|0; g.fillStyle='rgb('+v+','+v+','+v+')'; g.fillRect(Math.random()*N,Math.random()*H,2/PX,2/PX); } // grain d'enduit
@@ -1435,6 +1435,34 @@ function makeFacadeTex(gl){
   o=4*N; sh(18,o+76,220,18,0.45,true); g.fillStyle='rgba(255,255,255,.07)'; g.beginPath(); g.moveTo(60,o+80); g.lineTo(96,o+80); g.lineTo(46,o+240); g.lineTo(26,o+240); g.lineTo(26,o+190); g.closePath(); g.fill(); // reflet de vitrine
   o=6*N; recess(92,o+68,72,114); sill(84,o+190,88);
   for(let y=30;y<220;y+=32){ g.fillStyle='rgba(0,0,0,.13)'; g.fillRect(0,o+y,84,2); g.fillRect(172,o+y,84,2); g.fillStyle='rgba(255,255,255,.5)'; g.fillRect(0,o+y+2,84,1); g.fillRect(172,o+y+2,84,1); } // refends
+  // ---- variantes (le shader les substitue fenêtre par fenêtre ou au dernier étage : aucune géométrie en plus)
+  // 8 — Presqu'île, persiennes fermées
+  o=8*N; band(o); sh(0,o,N,10,0.22,true); own(38,o+30,180,176);
+  g.fillStyle='#f3efe6'; g.fillRect(74,o+34,108,168); g.fillRect(66,o+30,124,8);
+  g.fillStyle='#b4afa2'; g.fillRect(84,o+46,88,146); g.fillStyle='rgba(0,0,0,.22)'; for(let y=o+50;y<o+190;y+=7) g.fillRect(84,y,88,3);
+  g.fillStyle='#8f8a7e'; g.fillRect(126,o+46,4,146); g.fillRect(84,o+46,3,146); g.fillRect(169,o+46,3,146);
+  sh(84,o+46,88,10,0.35,true); own(119,o+22,18,16); g.fillStyle='#e9e3d6'; g.fillRect(119,o+22,18,16);
+  g.fillStyle='#262626'; g.fillRect(68,o+160,120,4); g.fillRect(68,o+198,120,5); for(let x=70;x<188;x+=9) g.fillRect(x,o+160,3,40); sh(62,o+203,132,13,0.32,true);
+  // 9 — dernier étage : fenêtre plus petite sous la corniche, sans balcon
+  o=9*N; band(o); sh(0,o,N,30,0.34,true); own(86,o+74,84,126);
+  g.fillStyle='#efe9dc'; g.fillRect(86,o+74,84,126); glass(94,o+82,68,110); g.fillStyle='#efe9dc'; g.fillRect(126,o+82,4,110); g.fillRect(94,o+134,68,3);
+  recess(94,o+82,68,110); sill(86,o+200,84);
+  g.fillStyle='#262626'; g.fillRect(90,o+168,76,3); for(let x=92;x<166;x+=8) g.fillRect(x,o+168,2,30);                // garde-corps
+  // 10 — Vieux Lyon : croisée à meneaux, un volet de bois rabattu
+  o=10*N; band(o); sh(0,o,N,10,0.22,true); own(76,o+56,104,140); own(40,o+62,36,128);
+  g.fillStyle='#e9dfcc'; g.fillRect(76,o+56,104,140); glass(86,o+66,84,120);
+  g.fillStyle='#e9dfcc'; g.fillRect(123,o+66,10,120); g.fillRect(86,o+118,84,10); g.fillStyle='#d2c6b0'; g.fillRect(70,o+194,116,8);
+  g.fillStyle='#6f5136'; g.fillRect(40,o+62,36,128); g.fillStyle='rgba(0,0,0,.25)'; for(let y=o+70;y<o+186;y+=14) g.fillRect(42,y,32,2); g.fillStyle='#4a3524'; g.fillRect(40,o+62,36,3); g.fillRect(40,o+187,36,3);
+  recess(86,o+66,84,120); sh(70,o+202,116,9,0.3,true); sh(76,o+62,5,128,0.3,false);
+  // 11 — Presqu'île sans balcon : lambrequin, appui, jardinière
+  o=11*N; band(o); sh(0,o,N,10,0.22,true); own(38,o+30,180,176);
+  g.fillStyle='#b9b4a8'; g.fillRect(40,o+44,34,152); g.fillRect(182,o+44,34,152); g.fillStyle='rgba(0,0,0,.2)'; for(let y=o+50;y<o+194;y+=8){ g.fillRect(40,y,34,3); g.fillRect(182,y,34,3); }
+  g.fillStyle='#f3efe6'; g.fillRect(74,o+34,108,168); g.fillRect(66,o+30,124,8);
+  glass(84,o+46,88,146); g.fillStyle='#f3efe6'; g.fillRect(125,o+46,6,146); g.fillRect(84,o+92,88,4);
+  recess(84,o+46,88,146); g.fillStyle='#7d8a8f'; g.fillRect(84,o+46,88,14); g.fillStyle='rgba(0,0,0,.25)'; for(let x=88;x<172;x+=8) g.fillRect(x,o+46,2,14); // lambrequin
+  g.fillStyle='#262626'; g.fillRect(80,o+176,96,3); for(let x=82;x<176;x+=7) g.fillRect(x,o+176,2,20);
+  g.fillStyle='#6b4a3a'; g.fillRect(82,o+192,92,8); g.fillStyle='#4f7a3a'; for(let x=84;x<172;x+=9){ g.beginPath(); g.arc(x+4,o+190,6,0,6.3); g.fill(); } g.fillStyle='#c8504a'; for(let x=88;x<170;x+=18) g.fillRect(x,o+185,3,3);
+  sill(74,o+202,108);
   const d=g.getImageData(0,0,N*PX,H*PX).data, md=k.getImageData(0,0,N*PX,H*PX).data, out=new Uint8Array(N*PX*H*PX*4);
   for(let i=0;i<out.length;i+=4){ out[i]=d[i]; out[i+1]=d[i+1]; out[i+2]=d[i+2]; out[i+3]=md[i]; }
   const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
@@ -1506,8 +1534,17 @@ varying vec3 vc; varying vec2 vt; varying vec3 vp;
 // teinte bleutée sombre) allumés au hasard (~40 %) selon la travée, l'étage et la position.
 void main(){ vec3 col=vc; float vd=distance(vp,E); bool glass=false;
   if(vt.x>-999.0){ vec2 uv=vt;
-    if(vt.y>=48.0){ float rr=floor(vt.y/64.0); uv=vec2(vt.x,(rr-1.0+clamp(fract(vt.y),0.004,0.996))/8.0); } // façade : rangée rr-1 de l'atlas
-    vec4 tx=texture2D(S,uv); col=mix(tx.rgb, tx.rgb*vc, tx.a);
+    float frow=-1.0;
+    if(vt.y>=48.0){ // façade : rangée de l'atlas, avec variantes par fenêtre (hv) et au dernier étage (fl = 0 en haut du mur)
+      float rr=floor(vt.y/64.0)-1.0, fl=floor(vt.y-(rr+1.0)*64.0+0.001), hv=fract(sin(dot(vec2(floor(vt.x),fl),vec2(41.17,17.93))+floor((vp.x-vp.z)*0.07)*3.1)*43758.5453);
+      if(rr==0.0){ if(fl==0.0) rr=9.0; else if(hv>0.85) rr=8.0; else if(hv<0.24) rr=11.0; }
+      else if(rr==1.0){ if(hv>0.7) rr=10.0; }
+      else if(rr==2.0){ if(fl==0.0) rr=9.0; }
+      frow=rr; uv=vec2(vt.x,(rr+clamp(fract(vt.y),0.004,0.996))/16.0); }
+    vec4 tx=texture2D(S,uv);
+    if(frow==4.0 && tx.a<0.5 && tx.r>0.6 && tx.g<0.32 && tx.b<0.3){ // store de boutique : une couleur par commerce
+      float hs=fract(sin(floor(vt.x)*91.7+floor((vp.x+vp.z)*0.05)*7.3)*43758.5453);
+      tx.rgb = hs<0.28 ? tx.rgb : hs<0.48 ? vec3(0.17,0.4,0.29) : hs<0.66 ? vec3(0.16,0.24,0.43) : hs<0.82 ? vec3(0.45,0.13,0.2) : vec3(0.22,0.22,0.24); } col=mix(tx.rgb, tx.rgb*vc, tx.a);
     glass = tx.a<0.5 && tx.b-tx.r>0.05 && tx.g<0.45;
     if(glass && vt.y>=48.0 && NIGHT<0.5){ float hw=fract(sin(dot(floor(vt),vec2(12.9898,78.233))+floor((vp.x-vp.z)*0.07)*5.3)*43758.5453);
       col=mix(col,vec3(0.6,0.73,0.86),(0.08+0.3*hw)*(1.0-smoothstep(0.1,0.75,fract(vt.y))));
