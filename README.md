@@ -7,3 +7,9 @@ Jouer : https://lyon.goodchild.fr
 - Hauteurs des bâtiments et arbres d'alignement : Métropole de Lyon, Licence Ouverte 2.0
 - Eau, relief et couleur des toits : IGN (BD TOPO, RGE ALTI, BD ORTHO), Licence Ouverte 2.0
 - Démo « Lyon réel » (photo.html) : photomaillage 3D 2023 de la Métropole de Lyon, Licence Ouverte 2.0, rendu CesiumJS
+
+## Lyon Transports (https://lyon.goodchild.fr/transport/)
+
+Jeu de gestion des transports en commun de la Métropole de Lyon.
+- Carte : © contributeurs OpenStreetMap, licence ODbL
+- Bâtiments (logements, surfaces), eau et communes : IGN BD TOPO, Licence Ouverte 2.0
