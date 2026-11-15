@@ -177,7 +177,7 @@
 
 <script>
 // auto-mise à jour : si le site a une construction plus récente que cette page (cache du navigateur), on recharge une fois
-const APP_BUILD='20261115-014153'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
+const APP_BUILD='20261115-014523'; // (ne pas l'appeler BUILD : c'est la liste des bâtiments)
 try{ fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(j && j.build && j.build!==APP_BUILD && sessionStorage.getItem('lx_rl')!==j.build){ sessionStorage.setItem('lx_rl',j.build); location.replace(location.pathname+'?b='+j.build); } }).catch(()=>{}); }catch(_){}
 </script>
@@ -1913,9 +1913,9 @@ let BUILDING3D=false;
 //   depuis 3 m au-dessus du sol connu (sous les arbres) ; repli : hauteur du joueur.
 // - Cesium ne sélectionne que les tuiles vues par la caméra : les rayons ne marchent que là où l'on regarde.
 // défaut : proche = 3e personne derrière la voiture (demande explicite de l'utilisateur, même si le photomaillage est plus beau de haut)
-let CAMLV=2; try{ const v=localStorage.getItem('lx_cam5'); if(v==='0'||v==='1'||v==='2') CAMLV=+v; }catch(_){} // 0 = proche, rétablie le 15/11/2026 à la demande de l'utilisateur (défaut : aérienne)
+let CAMLV=2; try{ const v=localStorage.getItem('lx_cam6'); if(v==='1'||v==='2') CAMLV=+v; }catch(_){} // haute ou aérienne. La caméra proche (0) a été essayée puis retirée le 15/11/2026 : l'utilisateur juge la vue de haut plus belle. Son code (aplatissement, arbres, façades plaquées) reste en place, inactif.
 const CAM_NAME=['proche','haute','aérienne'];
-function toggleCam(){ CAMLV=(CAMLV+2)%3; cam3.init=false; $('bcam').textContent='Caméra : '+CAM_NAME[CAMLV]; try{ localStorage.setItem('lx_cam5',CAMLV); }catch(_){}
+function toggleCam(){ CAMLV=CAMLV===2?1:2; cam3.init=false; $('bcam').textContent='Caméra : '+CAM_NAME[CAMLV]; try{ localStorage.setItem('lx_cam6',CAMLV); }catch(_){}
   if(!REEL) toast('La caméra '+CAM_NAME[CAMLV]+' s’applique en vue Réel','#ffcc33'); }
 let REEL=false, CZ=null, CZLOAD=false, CZFAIL=false, VIEW='2d', VIEW_WANT='2d';
 const CESIUM_URL='https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/';
